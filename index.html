@@ -913,6 +913,23 @@ body:has(.adm[open]) { overflow: hidden; }
       </form>
     </div>
 
+    <!-- F. Out of date — blocks sign-in until a newer copy is downloaded. -->
+    <div class="gate-view" id="gateUpdate" hidden aria-live="polite">
+      <p class="eyebrow">Update required</p>
+      <h2 class="gate-h">This copy is out of date.</h2>
+      <p class="gate-note" style="margin:0 0 1.3rem">
+        You have version <b id="gateVerLocal"></b>; the current one is <b id="gateVerLatest"></b>.
+        Download the new file, then open that one instead. Sign-in stays locked until you do.
+      </p>
+      <div class="gate-actions">
+        <a class="btn btn-primary" id="gateUpdateLink" href="#" target="_blank" rel="noopener">Get the new version ↗</a>
+      </div>
+      <div class="gate-alt">
+        <span>Already downloaded it?</span>
+        <button type="button" class="btn gate-switch" id="gateRecheck">Check again →</button>
+      </div>
+    </div>
+
     <!-- C. Waiting room -->
     <div class="gate-view" id="gateWaiting" hidden aria-live="polite">
       <p class="eyebrow">Status · Pending</p>
@@ -1802,7 +1819,7 @@ body:has(.adm[open]) { overflow: hidden; }
   const gate = $("auth-gate");
   const views = {
     loading: $("gateLoading"), auth: $("gateAuth"), waiting: $("gateWaiting"),
-    approving: $("gateApproving"), denied: $("gateDenied"),
+    approving: $("gateApproving"), denied: $("gateDenied"), update: $("gateUpdate"),
   };
   const progressFill = $("gateProgressFill");
   const form = $("authForm"), email = $("authEmail"), password = $("authPassword"),
@@ -1821,6 +1838,13 @@ body:has(.adm[open]) { overflow: hidden; }
   // gate shut for a random 5–10 seconds first so getting in doesn't feel instant.
   let approvalRevealAt = 0, revealTimer = 0, progressFor = 0;
 
+  // Version gate. version.json in the GitHub repo is the authority; bump both it
+  // and APP_VERSION in the same push, or every copy will be told it's out of date.
+  const APP_VERSION = "2026.09.17.1";
+  const REPO_URL = "https://github.com/ethanxiang6/websiteimbed";
+  const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteimbed/main/version.json";
+  let outdated = false;
+
   let isAdmin = false;
   let stopUsers = null;
   let users = [];
@@ -1829,6 +1853,9 @@ body:has(.adm[open]) { overflow: hidden; }
 
   /* ------------------------------ view ------------------------------ */
   function showView(name) {
+    // Once the copy is known to be stale, every screen resolves to the update
+    // notice — so no later code path can put the sign-in form back.
+    if (outdated) name = "update";
     for (const key in views) views[key].hidden = key !== name;
     if (name === "auth") requestAnimationFrame(() => email.focus({ preventScroll: true }));
   }
@@ -1850,6 +1877,7 @@ body:has(.adm[open]) { overflow: hidden; }
   }
 
   function unlockGate() {
+    if (outdated) return;
     gate.classList.add("gate-hidden");
     gate.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
@@ -2057,6 +2085,59 @@ body:has(.adm[open]) { overflow: hidden; }
       showView("waiting");
     }
   }
+
+  /* --------------------------- version gate --------------------------- */
+  // Asks GitHub what the current version is. A mismatch locks the gate for good;
+  // a failed check (offline, GitHub blocked at school) deliberately does NOT —
+  // otherwise an unreachable repo would lock everyone out permanently.
+  async function fetchLatestVersion() {
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), 6000);
+    try {
+      const res = await fetch(VERSION_URL + "?t=" + Date.now(), { cache: "no-store", signal: stop.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && data.version ? { version: String(data.version), url: data.url || REPO_URL } : null;
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function blockAsOutdated(latest) {
+    outdated = true;
+    cancelApprovalPause();
+    if (stopProfile) { stopProfile(); stopProfile = null; }
+    setAdmin(false);
+    $("gateVerLocal").textContent = APP_VERSION;
+    $("gateVerLatest").textContent = latest.version;
+    $("gateUpdateLink").href = latest.url;
+    lockGate();
+    showView("update");
+  }
+
+  async function checkVersion() {
+    const latest = await fetchLatestVersion();
+    if (latest && latest.version !== APP_VERSION) blockAsOutdated(latest);
+    return latest;
+  }
+
+  $("gateRecheck").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    const latest = await fetchLatestVersion();
+    // Reload rather than unlock in place: the running page is still the old build.
+    if (latest && latest.version === APP_VERSION) location.reload();
+    else {
+      if (latest) $("gateVerLatest").textContent = latest.version;
+      btn.disabled = false;
+      btn.textContent = "Check again →";
+    }
+  });
+
+  checkVersion();
 
   /* ------------------------------ auth ------------------------------ */
   onAuthStateChanged(auth, (user) => {
