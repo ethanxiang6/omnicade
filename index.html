@@ -698,6 +698,16 @@ footer .fl { display: flex; justify-content: space-between; gap: 1.5rem; flex-wr
 .gate-note b { color: var(--bone); font-weight: 500; word-break: break-all; }
 .gate-cooldown { color: var(--phosphor); }
 
+.gate-progress {
+  height: 4px; overflow: hidden;
+  background: var(--ink); border: 1px solid var(--line);
+}
+.gate-progress span {
+  display: block; width: 0; height: 100%;
+  background: linear-gradient(90deg, var(--phosphor-d), var(--phosphor));
+  box-shadow: 0 0 10px rgba(255,178,63,.45);
+}
+
 /* Revealed by a CSS animation delay, not JavaScript, so it still appears when
    scripts never run at all (file previews). A normal load hides this view first. */
 .gate-slow {
@@ -840,6 +850,7 @@ body:has(.adm[open]) { overflow: hidden; }
    spinner or cursor into a strobe — stop those outright instead. */
 @media (prefers-reduced-motion: reduce) {
   .gate-spinner, .gate-cursor { animation: none; }
+  .gate-progress { display: none; }
   #auth-gate.gate-hidden .gate-card { transform: none; }
   .adm[open] { animation: none; }
 }
@@ -892,7 +903,7 @@ body:has(.adm[open]) { overflow: hidden; }
           <button type="submit" class="btn btn-primary" id="authSubmit">▶ Sign in</button>
         </div>
         <p class="gate-note" id="authRegisterNote" hidden>
-          New accounts stay locked until an admin approves them.
+          New accounts are let in after a few seconds. The site owner can remove access at any time.
         </p>
         <p class="gate-note gate-cooldown" id="authCooldown" hidden></p>
         <div class="gate-alt">
@@ -911,6 +922,15 @@ body:has(.adm[open]) { overflow: hidden; }
         your account is approved — no need to reload.
       </p>
       <button type="button" class="btn" id="gateWaitingLogout">Log out</button>
+    </div>
+
+    <!-- E. Approving — a short on-screen pause after a new sign-up before it unlocks.
+         The account is already approved in the database; this is presentation only. -->
+    <div class="gate-view" id="gateApproving" hidden aria-live="polite">
+      <p class="eyebrow">Access request · Received</p>
+      <h2 class="gate-h">Setting up your access<span class="gate-cursor" aria-hidden="true"></span></h2>
+      <div class="gate-progress" aria-hidden="true"><span id="gateProgressFill"></span></div>
+      <p class="gate-note">This takes a few seconds. You'll be let in automatically.</p>
     </div>
 
     <!-- D. Denied -->
@@ -1781,8 +1801,10 @@ body:has(.adm[open]) { overflow: hidden; }
   const $ = (id) => document.getElementById(id);
   const gate = $("auth-gate");
   const views = {
-    loading: $("gateLoading"), auth: $("gateAuth"), waiting: $("gateWaiting"), denied: $("gateDenied"),
+    loading: $("gateLoading"), auth: $("gateAuth"), waiting: $("gateWaiting"),
+    approving: $("gateApproving"), denied: $("gateDenied"),
   };
+  const progressFill = $("gateProgressFill");
   const form = $("authForm"), email = $("authEmail"), password = $("authPassword"),
         errorEl = $("authError"), submit = $("authSubmit"), switchBtn = $("authSwitch"),
         heading = $("authHeading"), registerNote = $("authRegisterNote"), cooldownNote = $("authCooldown"),
@@ -1794,6 +1816,10 @@ body:has(.adm[open]) { overflow: hidden; }
   let stopProfile = null;
   let healedFor = null;
   let registering = false;
+
+  // New accounts are approved the moment they're created, but the page holds the
+  // gate shut for a random 5–10 seconds first so getting in doesn't feel instant.
+  let approvalRevealAt = 0, revealTimer = 0, progressFor = 0;
 
   let isAdmin = false;
   let stopUsers = null;
@@ -1908,17 +1934,50 @@ body:has(.adm[open]) { overflow: hidden; }
     cooldownTimer = setInterval(updateCooldown, 15000);
   }
 
+  /* --------------------------- approval pause --------------------------- */
+  const pauseActive = () => approvalRevealAt > Date.now();
+
+  function startApprovalPause() {
+    clearTimeout(revealTimer);
+    approvalRevealAt = Date.now() + 5000 + Math.random() * 5000;
+  }
+
+  function cancelApprovalPause() {
+    clearTimeout(revealTimer);
+    revealTimer = 0;
+    approvalRevealAt = 0;
+  }
+
+  function showApproving() {
+    showView("approving");
+    if (progressFor === approvalRevealAt) return;
+    progressFor = approvalRevealAt;
+    progressFill.style.transition = "none";
+    progressFill.style.width = "0%";
+    void progressFill.offsetWidth;
+    progressFill.style.transition = "width " + Math.max(0, approvalRevealAt - Date.now()) + "ms linear";
+    progressFill.style.width = "100%";
+  }
+
   /* ----------------------------- profile ----------------------------- */
   function watchProfile(user) {
     if (stopProfile) stopProfile();
-    showView("loading");
+    if (pauseActive()) showApproving();
+    else showView("loading");
 
     stopProfile = onSnapshot(doc(db, "users", user.uid), (snap) => {
+      // Any change to the account re-decides what to show, including mid-pause.
+      clearTimeout(revealTimer);
+
       if (!snap.exists()) {
         // Mid-registration the doc just hasn't been written yet.
         if (registering) {
-          waitingEmail.textContent = user.email || "";
-          showView("waiting");
+          if (pauseActive()) {
+            showApproving();
+          } else {
+            waitingEmail.textContent = user.email || "";
+            showView("waiting");
+          }
           return;
         }
         handleMissingProfile(user);
@@ -1928,14 +1987,28 @@ body:has(.adm[open]) { overflow: hidden; }
       const data = snap.data();
       if (data.isDenied === true) {
         // Checked first: a denied account stays out even if isApproved was left true.
+        cancelApprovalPause();
         lockGate();
         deniedEmail.textContent = user.email || "";
         showView("denied");
       } else if (data.isApproved === true) {
+        if (pauseActive()) {
+          lockGate();
+          showApproving();
+          const uid = user.uid, admin = data.isAdmin === true;
+          revealTimer = setTimeout(() => {
+            approvalRevealAt = 0;
+            if (!auth.currentUser || auth.currentUser.uid !== uid) return;
+            unlockGate();
+            setAdmin(admin);
+          }, approvalRevealAt - Date.now());
+          return;
+        }
         unlockGate();
         setAdmin(data.isAdmin === true);
       } else {
-        // Also covers approval being revoked while the site is open.
+        // Pending: signed up from an older copy of this page, or revoked by an admin.
+        cancelApprovalPause();
         lockGate();
         waitingEmail.textContent = user.email || "";
         showView("waiting");
@@ -1952,11 +2025,13 @@ body:has(.adm[open]) { overflow: hidden; }
   // Blocked accounts get the denied screen. Otherwise the request is recreated once,
   // so the account shows up for approval instead of waiting invisibly forever.
   async function handleMissingProfile(user) {
-    showView("loading");
+    if (pauseActive()) showApproving();
+    else showView("loading");
     try {
       const blocked = await getDoc(doc(db, "blocked", user.uid));
       if (!auth.currentUser || auth.currentUser.uid !== user.uid) return;
       if (blocked.exists()) {
+        cancelApprovalPause();
         lockGate();
         deniedEmail.textContent = user.email || "";
         showView("denied");
@@ -1970,18 +2045,24 @@ body:has(.adm[open]) { overflow: hidden; }
 
     if (healedFor !== user.uid) {
       healedFor = user.uid;
+      startApprovalPause();
       setDoc(doc(db, "users", user.uid), {
-        email: user.email, isApproved: false, createdAt: serverTimestamp(),
-      }).catch((err) => { setError(describe(err)); signOut(auth); });
+        email: user.email, isApproved: true, createdAt: serverTimestamp(),
+      }).catch((err) => { cancelApprovalPause(); setError(describe(err)); signOut(auth); });
     }
-    waitingEmail.textContent = user.email || "";
-    showView("waiting");
+    if (pauseActive()) {
+      showApproving();
+    } else {
+      waitingEmail.textContent = user.email || "";
+      showView("waiting");
+    }
   }
 
   /* ------------------------------ auth ------------------------------ */
   onAuthStateChanged(auth, (user) => {
     if (!user) {
       if (stopProfile) { stopProfile(); stopProfile = null; }
+      cancelApprovalPause();
       healedFor = null;
       lockGate();
       showView("auth");
@@ -2012,11 +2093,13 @@ body:has(.adm[open]) { overflow: hidden; }
     try {
       if (mode === "register") {
         registering = true;
+        startApprovalPause();
+        showApproving();
         const cred = await createUserWithEmailAndPassword(auth, address, password.value);
         recordRequest();
         await setDoc(doc(db, "users", cred.user.uid), {
           email: cred.user.email,
-          isApproved: false,
+          isApproved: true,
           createdAt: serverTimestamp(),
         });
       } else {
@@ -2024,6 +2107,7 @@ body:has(.adm[open]) { overflow: hidden; }
       }
       password.value = "";
     } catch (err) {
+      cancelApprovalPause();
       setError(describe(err));
       if (auth.currentUser) signOut(auth);
       else showView("auth");
@@ -2038,6 +2122,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function logOut() {
     if (stopProfile) { stopProfile(); stopProfile = null; }
+    cancelApprovalPause();
     setAdmin(false);
     setError("");
     signOut(auth);
