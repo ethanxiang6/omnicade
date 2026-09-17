@@ -1840,7 +1840,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.17.2";
+  const APP_VERSION = "2026.09.17.3";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2117,9 +2117,28 @@ body:has(.adm[open]) { overflow: hidden; }
     showView("update");
   }
 
+  // Compared as numbers, newest-wins — NOT "different from mine". GitHub's raw
+  // CDN serves version.json from a ~5 minute cache and ignores cache-busting
+  // query strings, so just after a push it still reports the previous version;
+  // treating that as a mismatch would tell people with the newest file to update.
+  function parseVersion(v) {
+    const parts = String(v).split(".").map((p) => parseInt(p, 10));
+    return parts.length && parts.every((n) => Number.isFinite(n)) ? parts : null;
+  }
+
+  function isNewer(latest, mine) {
+    const a = parseVersion(latest), b = parseVersion(mine);
+    if (!a || !b) return false;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x !== y) return x > y;
+    }
+    return false;
+  }
+
   async function checkVersion() {
     const latest = await fetchLatestVersion();
-    if (latest && latest.version !== APP_VERSION) blockAsOutdated(latest);
+    if (latest && isNewer(latest.version, APP_VERSION)) blockAsOutdated(latest);
     return latest;
   }
 
@@ -2129,7 +2148,7 @@ body:has(.adm[open]) { overflow: hidden; }
     btn.textContent = "Checking…";
     const latest = await fetchLatestVersion();
     // Reload rather than unlock in place: the running page is still the old build.
-    if (latest && latest.version === APP_VERSION) location.reload();
+    if (latest && !isNewer(latest.version, APP_VERSION)) location.reload();
     else {
       if (latest) $("gateVerLatest").textContent = latest.version;
       btn.disabled = false;
