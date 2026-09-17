@@ -1838,11 +1838,11 @@ body:has(.adm[open]) { overflow: hidden; }
   // New accounts are approved the moment they're created, but the page holds the
   // gate shut for a random 5–10 seconds first so getting in doesn't feel instant.
   let approvalRevealAt = 0, revealTimer = 0, progressFor = 0;
-  let approvalKind = "signin", progressTimers = [], unlocked = false;
+  let approvalKind = "signin", progressTimers = [];
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.17.4";
+  const APP_VERSION = "2026.09.17.5";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -1872,7 +1872,6 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function lockGate() {
     setAdmin(false);
-    unlocked = false;
     gate.classList.remove("gate-hidden");
     gate.setAttribute("aria-hidden", "false");
     setBackgroundInert(true);
@@ -1881,7 +1880,6 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function unlockGate() {
     if (outdated) return;
-    unlocked = true;
     gate.classList.add("gate-hidden");
     gate.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
@@ -2066,10 +2064,8 @@ body:has(.adm[open]) { overflow: hidden; }
         deniedEmail.textContent = user.email || "";
         showView("denied");
       } else if (data.isApproved === true) {
-        // Every fresh entry gets the pause — a new sign-in, or a reload of a
-        // saved session. Not while already inside, so later changes to the
-        // account (an admin edit, say) don't throw the loading screen back up.
-        if (!unlocked && !pauseActive()) startApprovalPause("signin");
+        // The pause is armed by the sign-in and sign-up handlers only, so a
+        // reload or a restored session opens straight into the site.
         if (pauseActive()) {
           lockGate();
           showApproving();
@@ -2253,6 +2249,8 @@ body:has(.adm[open]) { overflow: hidden; }
           createdAt: serverTimestamp(),
         });
       } else {
+        startApprovalPause("signin");
+        showApproving();
         await signInWithEmailAndPassword(auth, address, password.value);
       }
       password.value = "";
