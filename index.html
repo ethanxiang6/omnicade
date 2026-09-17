@@ -944,8 +944,8 @@ body:has(.adm[open]) { overflow: hidden; }
     <!-- E. Approving — a short on-screen pause after a new sign-up before it unlocks.
          The account is already approved in the database; this is presentation only. -->
     <div class="gate-view" id="gateApproving" hidden aria-live="polite">
-      <p class="eyebrow">Access request · Received</p>
-      <h2 class="gate-h">Setting up your access<span class="gate-cursor" aria-hidden="true"></span></h2>
+      <p class="eyebrow" id="gateApprovingEyebrow">Access request · Received</p>
+      <h2 class="gate-h"><span id="gateApprovingHead">Setting up your access</span><span class="gate-cursor" aria-hidden="true"></span></h2>
       <div class="gate-progress" aria-hidden="true"><span id="gateProgressFill"></span></div>
       <p class="gate-note">This takes a few seconds. You'll be let in automatically.</p>
     </div>
@@ -1821,7 +1821,8 @@ body:has(.adm[open]) { overflow: hidden; }
     loading: $("gateLoading"), auth: $("gateAuth"), waiting: $("gateWaiting"),
     approving: $("gateApproving"), denied: $("gateDenied"), update: $("gateUpdate"),
   };
-  const progressFill = $("gateProgressFill");
+  const progressFill = $("gateProgressFill"),
+        approvingEyebrow = $("gateApprovingEyebrow"), approvingHead = $("gateApprovingHead");
   const form = $("authForm"), email = $("authEmail"), password = $("authPassword"),
         errorEl = $("authError"), submit = $("authSubmit"), switchBtn = $("authSwitch"),
         heading = $("authHeading"), registerNote = $("authRegisterNote"), cooldownNote = $("authCooldown"),
@@ -1837,10 +1838,11 @@ body:has(.adm[open]) { overflow: hidden; }
   // New accounts are approved the moment they're created, but the page holds the
   // gate shut for a random 5–10 seconds first so getting in doesn't feel instant.
   let approvalRevealAt = 0, revealTimer = 0, progressFor = 0;
+  let approvalKind = "signin", progressTimers = [], unlocked = false;
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.17.3";
+  const APP_VERSION = "2026.09.17.4";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -1870,6 +1872,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function lockGate() {
     setAdmin(false);
+    unlocked = false;
     gate.classList.remove("gate-hidden");
     gate.setAttribute("aria-hidden", "false");
     setBackgroundInert(true);
@@ -1878,6 +1881,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function unlockGate() {
     if (outdated) return;
+    unlocked = true;
     gate.classList.add("gate-hidden");
     gate.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
@@ -1965,26 +1969,68 @@ body:has(.adm[open]) { overflow: hidden; }
   /* --------------------------- approval pause --------------------------- */
   const pauseActive = () => approvalRevealAt > Date.now();
 
-  function startApprovalPause() {
+  function startApprovalPause(kind) {
     clearTimeout(revealTimer);
+    approvalKind = kind;
     approvalRevealAt = Date.now() + 5000 + Math.random() * 5000;
   }
 
   function cancelApprovalPause() {
     clearTimeout(revealTimer);
+    clearProgress();
     revealTimer = 0;
     approvalRevealAt = 0;
   }
 
-  function showApproving() {
-    showView("approving");
-    if (progressFor === approvalRevealAt) return;
-    progressFor = approvalRevealAt;
+  function clearProgress() {
+    progressTimers.forEach(clearTimeout);
+    progressTimers = [];
+  }
+
+  // Splits a total into `parts` uneven random pieces that still add up exactly.
+  function randomSplit(total, parts) {
+    const weights = Array.from({ length: parts }, () => 0.35 + Math.random());
+    const sum = weights.reduce((a, b) => a + b, 0);
+    return weights.map((w) => (w / sum) * total);
+  }
+
+  // Moves like a real progress bar rather than a constant crawl: a handful of
+  // uneven segments, each with a short stall before it, some gliding and some
+  // snapping. Different every run, and always lands on 100% as the gate opens.
+  function runProgress(totalMs) {
+    clearProgress();
     progressFill.style.transition = "none";
     progressFill.style.width = "0%";
     void progressFill.offsetWidth;
-    progressFill.style.transition = "width " + Math.max(0, approvalRevealAt - Date.now()) + "ms linear";
-    progressFill.style.width = "100%";
+
+    const steps = 4 + Math.floor(Math.random() * 4);
+    const slices = randomSplit(totalMs, steps);
+    const jumps = randomSplit(100, steps);
+    let at = 0, reached = 0;
+
+    slices.forEach((slice, i) => {
+      const last = i === steps - 1;
+      const stall = last ? 0 : Math.random() * slice * 0.5;
+      const move = Math.max(100, slice - stall);
+      reached = last ? 100 : Math.min(99, reached + jumps[i]);
+      const width = reached, startAt = at;
+      const ease = Math.random() < 0.5 ? "linear" : "cubic-bezier(.25,.8,.35,1)";
+      progressTimers.push(setTimeout(() => {
+        progressFill.style.transition = "width " + Math.round(move) + "ms " + ease;
+        progressFill.style.width = width + "%";
+      }, startAt + stall));
+      at = startAt + stall + move;
+    });
+  }
+
+  function showApproving() {
+    const signup = approvalKind === "signup";
+    approvingEyebrow.textContent = signup ? "Access request · Received" : "Connecting";
+    approvingHead.textContent = signup ? "Setting up your access" : "Loading your cabinet";
+    showView("approving");
+    if (progressFor === approvalRevealAt) return;
+    progressFor = approvalRevealAt;
+    runProgress(Math.max(0, approvalRevealAt - Date.now()));
   }
 
   /* ----------------------------- profile ----------------------------- */
@@ -2020,6 +2066,10 @@ body:has(.adm[open]) { overflow: hidden; }
         deniedEmail.textContent = user.email || "";
         showView("denied");
       } else if (data.isApproved === true) {
+        // Every fresh entry gets the pause — a new sign-in, or a reload of a
+        // saved session. Not while already inside, so later changes to the
+        // account (an admin edit, say) don't throw the loading screen back up.
+        if (!unlocked && !pauseActive()) startApprovalPause("signin");
         if (pauseActive()) {
           lockGate();
           showApproving();
@@ -2073,7 +2123,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
     if (healedFor !== user.uid) {
       healedFor = user.uid;
-      startApprovalPause();
+      startApprovalPause("signup");
       setDoc(doc(db, "users", user.uid), {
         email: user.email, isApproved: true, createdAt: serverTimestamp(),
       }).catch((err) => { cancelApprovalPause(); setError(describe(err)); signOut(auth); });
@@ -2193,7 +2243,7 @@ body:has(.adm[open]) { overflow: hidden; }
     try {
       if (mode === "register") {
         registering = true;
-        startApprovalPause();
+        startApprovalPause("signup");
         showApproving();
         const cred = await createUserWithEmailAndPassword(auth, address, password.value);
         recordRequest();
