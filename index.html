@@ -1027,6 +1027,14 @@ body:has(.adm[open]) { overflow: hidden; }
 .chat-mini.no:hover { border-color: var(--rust); color: var(--rust); }
 
 #chatMessages { display: flex; flex-direction: column; gap: .45rem; padding: .8rem; }
+.chat-older {
+  flex: none; align-self: center; margin-bottom: .2rem;
+  padding: .3rem .7rem; border-radius: 2px; cursor: pointer;
+  font-family: var(--f-mono); font-size: .6rem; letter-spacing: .09em; text-transform: uppercase;
+  border: 1px solid var(--line); background: transparent; color: var(--slate);
+}
+.chat-older:hover:not(:disabled) { border-color: var(--phosphor-d); color: var(--phosphor); }
+.chat-older:disabled { cursor: default; opacity: .6; }
 .chat-msg {
   max-width: 82%; padding: .45rem .65rem; border-radius: 10px;
   font-size: .82rem; line-height: 1.45; overflow-wrap: anywhere;
@@ -2354,7 +2362,7 @@ body.entering > footer  { animation-delay: .13s; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.10";
+  const APP_VERSION = "2026.09.18.11";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -3121,9 +3129,11 @@ body.entering > footer  { animation-delay: .13s; }
 
   const CHAT = {
     uid: null, email: "", admin: false,
-    chats: [], requests: [], adminChats: [], people: [], prefs: { nicknames: {}, reads: {} },
+    chats: [], requests: [], adminChats: [], people: [], peopleAt: 0,
+    prefs: { nicknames: {}, reads: {} },
     openId: null, openChat: null, readOnly: false, adminMode: false,
-    blocks: [], messages: [], locked: false,
+    blocks: [], messages: [], msgLimit: 0, moreMessages: false, keepAnchor: false,
+    locked: false,
     stops: [], stopMessages: null, stopBlocks: null,
   };
 
@@ -3167,9 +3177,10 @@ body.entering > footer  { animation-delay: .13s; }
     chatRoot.classList.add("on");
     chatAdminFolder.hidden = !CHAT.admin;
 
-    // Lets other people find this account by email.
+    // Lets other people find this account by email. Writing this entry is worth
+    // it every session; reading everyone else's waits until the search box asks.
     setDoc(doc(db, "directory", uid), { email: CHAT.email, isAdmin: CHAT.admin }, { merge: true })
-      .then(loadPeople).catch(loadPeople);
+      .catch(() => {});
 
     CHAT.stops.push(onSnapshot(doc(db, "prefs", uid), (snap) => {
       const d = snap.exists() ? snap.data() : {};
@@ -3205,9 +3216,11 @@ body.entering > footer  { animation-delay: .13s; }
     if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
     if (CHAT.stopBlocks) { CHAT.stopBlocks(); CHAT.stopBlocks = null; }
     Object.assign(CHAT, {
-      uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [], people: [],
+      uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [],
+      people: [], peopleAt: 0,
       prefs: { nicknames: {}, reads: {} }, openId: null, openChat: null,
       readOnly: false, adminMode: false, blocks: [], messages: [],
+      msgLimit: 0, moreMessages: false, keepAnchor: false,
     });
     chatRoot.classList.remove("on");
     chatPanel.classList.remove("on");
@@ -3328,6 +3341,8 @@ body.entering > footer  { animation-delay: .13s; }
     CHAT.openChat = null;
     CHAT.blocks = [];
     CHAT.messages = [];
+    CHAT.moreMessages = false;
+    CHAT.keepAnchor = false;
     if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
     if (CHAT.stopBlocks) { CHAT.stopBlocks(); CHAT.stopBlocks = null; }
     $("chatBlockBar").hidden = true;
@@ -3438,12 +3453,24 @@ body.entering > footer  { animation-delay: .13s; }
       renderBlockState();
     }, (err) => chatFail(err));
 
+    CHAT.msgLimit = MSG_PAGE;
+    listenMessages(chat, readOnly);
+  }
+
+  // Opening a conversation used to read its last 200 messages, every time, even
+  // when you were only glancing at it. It reads a screenful instead, and asks
+  // for another page only when someone scrolls back for one.
+  const MSG_PAGE = 40;
+
+  function listenMessages(chat, readOnly) {
     if (CHAT.stopMessages) CHAT.stopMessages();
     CHAT.stopMessages = onSnapshot(
-      query(collection(db, "chats", chat.id, "messages"), orderBy("at", "desc"), limit(200)),
+      query(collection(db, "chats", chat.id, "messages"), orderBy("at", "desc"), limit(CHAT.msgLimit)),
       (qs) => {
         const msgs = qs.docs.map((d) => Object.assign({ id: d.id }, d.data())).reverse();
         CHAT.messages = msgs;
+        // A full page means there may be more behind it; a short one is the start.
+        CHAT.moreMessages = qs.size >= CHAT.msgLimit;
         renderMessages(msgs, readOnly, chat);
         // Mark read against the newest message's own server time.
         if (!readOnly) {
@@ -3453,7 +3480,26 @@ body.entering > footer  { animation-delay: .13s; }
   }
 
   function renderMessages(msgs, readOnly, chat) {
+    // Fetching an older page reflows the whole list, so hold the reading
+    // position by its distance from the bottom instead of jumping down.
+    const fromBottom = CHAT.keepAnchor ? chatMessagesEl.scrollHeight - chatMessagesEl.scrollTop : 0;
     chatMessagesEl.replaceChildren();
+
+    if (CHAT.moreMessages) {
+      const older = document.createElement("button");
+      older.type = "button";
+      older.className = "chat-older";
+      older.textContent = "Older messages";
+      older.addEventListener("click", () => {
+        older.disabled = true;
+        older.textContent = "Loading…";
+        CHAT.msgLimit += MSG_PAGE;
+        CHAT.keepAnchor = true;
+        listenMessages(chat, readOnly);
+      });
+      chatMessagesEl.appendChild(older);
+    }
+
     msgs.forEach((m, i) => {
       const el = document.createElement("div");
       el.className = "chat-msg" + (m.from === CHAT.uid && !readOnly ? " mine" : "");
@@ -3507,7 +3553,13 @@ body.entering > footer  { animation-delay: .13s; }
       }
       chatMessagesEl.appendChild(el);
     });
-    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+
+    if (CHAT.keepAnchor) {
+      chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight - fromBottom;
+      CHAT.keepAnchor = false;
+    } else {
+      chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    }
   }
 
   function editMessage(chatId, m, isLast) {
@@ -3863,16 +3915,26 @@ body.entering > footer  { animation-delay: .13s; }
   // Everyone who has signed in is listed, so the search box completes as you
   // type instead of needing a full address. Admins are left out for everyone
   // but other admins — they start conversations, nobody starts one with them.
-  async function loadPeople() {
+  //
+  // Reading it costs one read per signed-in person, so it is fetched only when
+  // the search box is actually used, and then kept until it goes stale. It used
+  // to load on every panel open, which paid that price again for an answer that
+  // had not changed.
+  const PEOPLE_TTL = 5 * 60 * 1000;
+
+  async function loadPeople(force) {
     if (!CHAT.uid) return;
+    if (!force && CHAT.peopleAt && Date.now() - CHAT.peopleAt < PEOPLE_TTL) return;
     try {
       const qs = await getDocs(query(collection(db, "directory"), limit(300)));
       CHAT.people = qs.docs.map((d) => ({
         uid: d.id, email: d.data().email || "", isAdmin: d.data().isAdmin === true,
       }));
+      CHAT.peopleAt = Date.now();
     } catch (err) {
       chatFail(err);
       CHAT.people = [];
+      CHAT.peopleAt = 0;
     }
   }
 
@@ -3934,6 +3996,7 @@ body.entering > footer  { animation-delay: .13s; }
       const hiddenAdmin = !CHAT.admin && term &&
         CHAT.people.some((p) => p.isAdmin && p.email.includes(term));
       if (hiddenAdmin) return searchMessage("Admins start their own chats — you can't message one first.");
+      if (!CHAT.peopleAt) return searchMessage("Looking…");
       return searchMessage(CHAT.people.length > 1 ? "No one here matches that." : "Nobody else has signed in yet.");
     }
 
@@ -3945,7 +4008,11 @@ body.entering > footer  { animation-delay: .13s; }
       .forEach((p) => chatSearchResults.appendChild(peopleRow(p)));
   }
 
-  chatSearch.addEventListener("focus", renderPeople);
+  chatSearch.addEventListener("focus", async () => {
+    if (!CHAT.peopleAt) searchMessage("Looking…");
+    await loadPeople();
+    renderPeople();
+  });
   chatSearch.addEventListener("input", renderPeople);
   chatSearch.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.stopPropagation(); chatSearch.value = ""; chatSearchResults.hidden = true; }
@@ -3955,7 +4022,7 @@ body.entering > footer  { animation-delay: .13s; }
   chatFab.addEventListener("click", () => {
     const open = chatPanel.classList.toggle("on");
     chatRoot.classList.remove("dim");
-    if (open) { showChatList(); chatSearch.value = ""; chatSearchResults.hidden = true; loadPeople(); }
+    if (open) { showChatList(); chatSearch.value = ""; chatSearchResults.hidden = true; }
   });
   $("chatClose").addEventListener("click", () => chatPanel.classList.remove("on"));
   $("chatClose2").addEventListener("click", () => chatPanel.classList.remove("on"));
