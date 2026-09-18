@@ -1073,6 +1073,42 @@ body:has(.adm[open]) { overflow: hidden; }
 }
 
 /* ============================================================
+   ENTRANCES AFTER A WAIT — nothing should snap into place
+   ============================================================ */
+/* The site itself, once the gate lets you through. #nav is left out: it
+   uses transform to slide in, and an animation here would fight it. */
+body.entering > header,
+body.entering > .crawl,
+body.entering > section,
+body.entering > footer { animation: page-in .55s var(--ease) both; }
+body.entering > .crawl  { animation-delay: .05s; }
+body.entering > section { animation-delay: .09s; }
+body.entering > footer  { animation-delay: .13s; }
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Each gate screen as it replaces the one before it. */
+.gate-view { animation: soft-in .3s var(--ease); }
+@keyframes soft-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* A game appears only once it has actually loaded, rather than flashing in. */
+#frame { opacity: 0; transition: opacity .4s var(--ease); }
+#frame.ready { opacity: 1; }
+
+/* The chat panel, and each view inside it. */
+#chatPanel.on { animation: chat-pop .22s var(--ease); transform-origin: bottom right; }
+@keyframes chat-pop {
+  from { opacity: 0; transform: translateY(10px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+#chatListView, #chatConvo, #chatSheet { animation: soft-in .2s var(--ease); }
+
+/* ============================================================
    SCROLLBARS, CHECKBOXES, TICKS — themed, not the OS defaults
    ============================================================ */
 * { scrollbar-width: thin; scrollbar-color: var(--phosphor-d) transparent; }
@@ -1135,6 +1171,9 @@ body:has(.adm[open]) { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .gate-spinner, .gate-cursor { animation: none; }
   .gate-progress { display: none; }
+  body.entering > header, body.entering > .crawl, body.entering > section, body.entering > footer,
+  .gate-view, #chatPanel.on, #chatListView, #chatConvo, #chatSheet { animation: none; }
+  #frame { opacity: 1; transition: none; }
   #auth-gate.gate-hidden .gate-card { transform: none; }
   .adm[open] { animation: none; }
 }
@@ -1996,7 +2035,7 @@ body:has(.adm[open]) { overflow: hidden; }
     frame.style.setProperty("--zoom", Math.max(0.1, s));
   }
 
-  let stack = [], pos = -1, current = "";
+  let stack = [], pos = -1, current = "", frameRevealTimer = 0;
 
   function setStatus(t) { status.textContent = t; }
 
@@ -2023,6 +2062,8 @@ body:has(.adm[open]) { overflow: hidden; }
     player.classList.remove("on");
     document.body.classList.remove("locked");
     stage.classList.remove("boxed");
+    clearTimeout(frameRevealTimer);
+    frame.classList.remove("ready");
     frame.removeAttribute("src");
     show("idle");
     setStatus("Ready.");
@@ -2052,6 +2093,12 @@ body:has(.adm[open]) { overflow: hidden; }
       setStatus("Refused by origin: " + u);
       return;
     }
+
+    // Hold the frame invisible until it loads — but never longer than a few
+    // seconds, in case a page never fires its load event.
+    frame.classList.remove("ready");
+    clearTimeout(frameRevealTimer);
+    frameRevealTimer = setTimeout(() => frame.classList.add("ready"), 6000);
 
     stage.classList.toggle("boxed", isEmulated(u));
     // Quitting a DOS game drops to the emulator's DOS prompt. That runs inside
@@ -2121,7 +2168,10 @@ body:has(.adm[open]) { overflow: hidden; }
     if (e.key === "Escape" && rackSearch.value) { e.stopPropagation(); rackSearch.value = ""; renderRack(); }
   });
 
-  frame.addEventListener("load", () => { if (current) setStatus("Loaded " + current); });
+  frame.addEventListener("load", () => {
+    frame.classList.add("ready");
+    if (current) setStatus("Loaded " + current);
+  });
 
   /* --------------------------- wiring -------------------------- */
   document.querySelectorAll("[data-url]").forEach((el) => {
@@ -2244,7 +2294,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.7";
+  const APP_VERSION = "2026.09.18.8";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2284,6 +2334,9 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function unlockGate() {
     if (outdated) return;
+    // Bring the page in behind the fading gate instead of revealing it fully formed.
+    document.body.classList.add("entering");
+    setTimeout(() => document.body.classList.remove("entering"), 800);
     gate.classList.add("gate-hidden");
     gate.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
