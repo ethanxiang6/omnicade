@@ -1148,8 +1148,8 @@ body:has(.adm[open]) { overflow: hidden; }
   <span class="mark">ATTRACT MODE</span>
   <span class="spacer"></span>
   <a href="#forensics" class="navlink">The header problem</a>
-  <a href="#library" class="navlink">Library</a>
   <a href="#messages" class="navlink">Chats</a>
+  <a href="#library" class="navlink">Library</a>
   <a href="#" id="navPlay">Open player →</a>
   <button type="button" class="btn btn-ghost" id="adminBtn" hidden>
     Admin <span class="adm-badge" id="adminBadge" hidden>0</span>
@@ -1241,32 +1241,6 @@ body:has(.adm[open]) { overflow: hidden; }
   </div>
 </section>
 
-<!-- ========================== LIBRARY =========================== -->
-<section class="section" id="library" style="padding-top:0">
-  <div class="wrap">
-    <div class="grid-head">
-      <div>
-        <p class="eyebrow reveal">Verified playable · one click</p>
-        <h2 class="reveal" style="--i:1">The cabinet.</h2>
-      </div>
-      <p class="lede reveal" style="--i:2">
-        Emulated in the browser by the Internet Archive, cover art and all — pulled live from
-        each item's own archive.org record.
-      </p>
-    </div>
-
-    <div class="cabs-bar reveal" style="--i:3">
-      <span class="cabs-count" id="cabsCount">Featured titles</span>
-      <button type="button" class="btn btn-primary" id="browseAll">Browse all games →</button>
-    </div>
-
-    <div class="cabs" id="cabs"></div>
-
-    <p class="eyebrow reveal" style="margin-top:4.5rem">Full portals · thousands of titles</p>
-    <div class="portals" id="portals"></div>
-  </div>
-</section>
-
 <!-- ========================== CHATS ============================= -->
 <section class="section" id="messages" style="padding-top:0">
   <div class="wrap">
@@ -1305,6 +1279,32 @@ body:has(.adm[open]) { overflow: hidden; }
       <strong>Safety:</strong> an admin can read any conversation on this site, including private
       messages between two people.
     </p>
+  </div>
+</section>
+
+<!-- ========================== LIBRARY =========================== -->
+<section class="section" id="library" style="padding-top:0">
+  <div class="wrap">
+    <div class="grid-head">
+      <div>
+        <p class="eyebrow reveal">Verified playable · one click</p>
+        <h2 class="reveal" style="--i:1">The cabinet.</h2>
+      </div>
+      <p class="lede reveal" style="--i:2">
+        Emulated in the browser by the Internet Archive, cover art and all — pulled live from
+        each item's own archive.org record.
+      </p>
+    </div>
+
+    <div class="cabs-bar reveal" style="--i:3">
+      <span class="cabs-count" id="cabsCount">Featured titles</span>
+      <button type="button" class="btn btn-primary" id="browseAll">Browse all games →</button>
+    </div>
+
+    <div class="cabs" id="cabs"></div>
+
+    <p class="eyebrow reveal" style="margin-top:4.5rem">Full portals · thousands of titles</p>
+    <div class="portals" id="portals"></div>
   </div>
 </section>
 
@@ -2115,7 +2115,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.1";
+  const APP_VERSION = "2026.09.18.2";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;

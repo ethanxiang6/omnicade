@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.18.1",
+  "version": "2026.09.18.2",
   "url": "https://github.com/ethanxiang6/websiteembed",
   "note": "Must match APP_VERSION in index.html. Bump both in the same push. Numbers only, newest wins."
 }
