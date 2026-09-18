@@ -996,6 +996,24 @@ body:has(.adm[open]) { overflow: hidden; }
   letter-spacing: .1em; text-transform: uppercase; opacity: .7;
 }
 
+.chat-msg .tools { display: flex; gap: .5rem; margin-top: .25rem; }
+.chat-msg .tools button {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: var(--f-mono); font-size: .58rem; letter-spacing: .06em;
+  text-transform: uppercase; color: currentColor; opacity: .6;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.chat-msg .tools button:hover { opacity: 1; }
+.chat-msg .edited { opacity: .6; font-style: italic; }
+
+.chat-blockbar {
+  display: flex; align-items: center; gap: .6rem; flex: none;
+  padding: .6rem .7rem; border-top: 1px solid var(--line); background: var(--ink-3);
+  font-family: var(--f-mono); font-size: .68rem; line-height: 1.5; color: var(--slate);
+}
+.chat-blockbar[hidden] { display: none; }
+.chat-blockbar span { flex: 1; min-width: 0; }
+
 #chatForm { display: flex; gap: .45rem; flex: none; padding: .6rem; border-top: 1px solid var(--line); }
 #chatInput {
   flex: 1; min-width: 0; padding: .55rem .65rem; border-radius: 2px; outline: none;
@@ -1352,9 +1370,14 @@ body:has(.adm[open]) { overflow: hidden; }
         <button type="button" class="chat-icon-btn" id="chatBack" aria-label="Back to all chats">‹</button>
         <span class="t" id="chatConvoName"></span>
         <button type="button" class="chat-icon-btn" id="chatRename" title="Rename this person (only you see it)">✎</button>
+        <button type="button" class="chat-icon-btn" id="chatBlock" title="Block this chat">⊘</button>
         <button type="button" class="chat-icon-btn" id="chatClose2" aria-label="Close messages">✕</button>
       </div>
       <div class="chat-scroll" id="chatMessages"></div>
+      <div class="chat-blockbar" id="chatBlockBar" hidden>
+        <span id="chatBlockText"></span>
+        <button type="button" class="chat-mini" id="chatUnblock" hidden>Unblock</button>
+      </div>
       <form id="chatForm">
         <input id="chatInput" type="text" maxlength="2000" autocomplete="off" placeholder="Message…" aria-label="Message">
         <button type="submit" class="btn btn-primary">Send</button>
@@ -2070,7 +2093,7 @@ body:has(.adm[open]) { overflow: hidden; }
     createUserWithEmailAndPassword, signOut,
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
   import {
-    getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, collection,
+    getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, collection,
     query, where, orderBy, limit, serverTimestamp, writeBatch,
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
@@ -2115,7 +2138,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.4";
+  const APP_VERSION = "2026.09.18.5";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2849,8 +2872,11 @@ body:has(.adm[open]) { overflow: hidden; }
     uid: null, email: "", admin: false,
     chats: [], requests: [], adminChats: [], people: [], prefs: { nicknames: {}, reads: {} },
     openId: null, openChat: null, readOnly: false, adminMode: false,
-    stops: [], stopMessages: null,
+    blocks: [], messages: [],
+    stops: [], stopMessages: null, stopBlocks: null,
   };
+
+  const BASE_TITLE = document.title;
 
   const chatIdFor = (a, b) => [a, b].sort().join("__");
   const asMillis = (v) => (v && typeof v.toMillis === "function" ? v.toMillis() : 0);
@@ -2915,21 +2941,34 @@ body:has(.adm[open]) { overflow: hidden; }
     CHAT.stops.forEach((fn) => { try { fn(); } catch (e) {} });
     CHAT.stops = [];
     if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
+    if (CHAT.stopBlocks) { CHAT.stopBlocks(); CHAT.stopBlocks = null; }
     Object.assign(CHAT, {
       uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [], people: [],
       prefs: { nicknames: {}, reads: {} }, openId: null, openChat: null,
-      readOnly: false, adminMode: false,
+      readOnly: false, adminMode: false, blocks: [], messages: [],
     });
     chatRoot.classList.remove("on");
     chatPanel.classList.remove("on");
     chatDot.hidden = true;
+    document.title = BASE_TITLE;
+  }
+
+  // Unread conversations plus waiting friend requests, shown in the tab title
+  // so a message is noticeable while a game has the screen.
+  function updateTitleBadge() {
+    const n = CHAT.chats.filter(isUnread).length + CHAT.requests.length;
+    document.title = n ? "(" + n + ") " + BASE_TITLE : BASE_TITLE;
   }
 
   /* ------------------------------ views ------------------------------ */
   function showChatList() {
     CHAT.openId = null;
     CHAT.openChat = null;
+    CHAT.blocks = [];
+    CHAT.messages = [];
     if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
+    if (CHAT.stopBlocks) { CHAT.stopBlocks(); CHAT.stopBlocks = null; }
+    $("chatBlockBar").hidden = true;
     chatConvo.hidden = true;
     chatListView.hidden = false;
     renderChatList();
@@ -2966,6 +3005,7 @@ body:has(.adm[open]) { overflow: hidden; }
       chatListEl.appendChild(row);
     });
 
+    updateTitleBadge();
     chatEmpty.hidden = list.length > 0;
     chatEmpty.textContent = CHAT.adminMode
       ? "No conversations on the site yet."
@@ -3007,6 +3047,7 @@ body:has(.adm[open]) { overflow: hidden; }
     });
 
     if (CHAT.requests.length) chatDot.hidden = false;
+    updateTitleBadge();
   }
 
   function openChat(chat, readOnly) {
@@ -3021,11 +3062,22 @@ body:has(.adm[open]) { overflow: hidden; }
     chatMessagesEl.replaceChildren();
     if (!readOnly) markRead(chat.id, asMillis(chat.lastAt));
 
+    // Either person can switch a conversation off; the rules refuse messages
+    // while a block exists, so this is the same truth the server enforces.
+    if (CHAT.stopBlocks) CHAT.stopBlocks();
+    CHAT.blocks = [];
+    renderBlockState();
+    CHAT.stopBlocks = onSnapshot(collection(db, "chats", chat.id, "blocks"), (qs) => {
+      CHAT.blocks = qs.docs.map((d) => d.id);
+      renderBlockState();
+    }, () => {});
+
     if (CHAT.stopMessages) CHAT.stopMessages();
     CHAT.stopMessages = onSnapshot(
       query(collection(db, "chats", chat.id, "messages"), orderBy("at", "desc"), limit(200)),
       (qs) => {
-        const msgs = qs.docs.map((d) => d.data()).reverse();
+        const msgs = qs.docs.map((d) => Object.assign({ id: d.id }, d.data())).reverse();
+        CHAT.messages = msgs;
         renderMessages(msgs, readOnly, chat);
         // Mark read against the newest message's own server time.
         if (!readOnly) {
@@ -3036,7 +3088,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function renderMessages(msgs, readOnly, chat) {
     chatMessagesEl.replaceChildren();
-    msgs.forEach((m) => {
+    msgs.forEach((m, i) => {
       const el = document.createElement("div");
       el.className = "chat-msg" + (m.from === CHAT.uid && !readOnly ? " mine" : "");
       if (readOnly) {
@@ -3046,19 +3098,115 @@ body:has(.adm[open]) { overflow: hidden; }
         el.appendChild(who);
       }
       el.appendChild(document.createTextNode(m.text || ""));
+
       const when = asMillis(m.at);
-      if (when) {
+      if (when || m.editedAt) {
         const t = document.createElement("span");
         t.className = "when";
-        t.textContent = new Date(when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        t.textContent = when
+          ? new Date(when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+          : "";
+        if (m.editedAt) {
+          const ed = document.createElement("span");
+          ed.className = "edited";
+          ed.textContent = (t.textContent ? " · " : "") + "edited";
+          t.appendChild(ed);
+        }
         el.appendChild(t);
+      }
+
+      // Your own messages are yours to change. In the admin review folder an
+      // admin can change anyone's — the rules allow exactly these two cases.
+      const canEdit = readOnly ? CHAT.admin : m.from === CHAT.uid;
+      if (canEdit) {
+        const tools = document.createElement("div");
+        tools.className = "tools";
+        const isLast = i === msgs.length - 1;
+
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => editMessage(chat.id, m, isLast));
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.textContent = "Delete";
+        del.addEventListener("click", () => deleteMessage(chat.id, m, isLast, msgs[i - 1]));
+
+        tools.append(edit, del);
+        el.appendChild(tools);
       }
       chatMessagesEl.appendChild(el);
     });
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
+  async function editMessage(chatId, m, isLast) {
+    const next = prompt("Edit this message:", m.text || "");
+    if (next === null) return;
+    const text = next.trim().slice(0, 2000);
+    if (!text || text === m.text) return;
+    try {
+      await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text, editedAt: serverTimestamp() });
+      // Keep the list preview honest when the newest message changes.
+      if (isLast) {
+        await setDoc(doc(db, "chats", chatId), { lastText: text }, { merge: true });
+      }
+    } catch (err) {
+      alert("Couldn't edit that message.");
+    }
+  }
+
+  async function deleteMessage(chatId, m, isLast, previous) {
+    if (!confirm("Delete this message? It can't be brought back.")) return;
+    try {
+      await deleteDoc(doc(db, "chats", chatId, "messages", m.id));
+      if (isLast) {
+        await setDoc(doc(db, "chats", chatId), {
+          lastText: previous ? previous.text : "",
+          lastFrom: previous ? previous.from : "",
+        }, { merge: true });
+      }
+    } catch (err) {
+      alert("Couldn't delete that message.");
+    }
+  }
+
   /* ------------------------------ actions ------------------------------ */
+  function renderBlockState() {
+    const bar = $("chatBlockBar"), unblock = $("chatUnblock"), text = $("chatBlockText");
+    const blockBtn = $("chatBlock");
+    const iBlocked = CHAT.blocks.includes(CHAT.uid);
+    const theyBlocked = CHAT.blocks.some((uid) => uid !== CHAT.uid);
+    const blocked = iBlocked || theyBlocked;
+
+    blockBtn.hidden = CHAT.readOnly || !CHAT.openChat;
+    blockBtn.title = iBlocked ? "Unblock this chat" : "Block this chat";
+    chatForm.hidden = CHAT.readOnly || blocked;
+    bar.hidden = CHAT.readOnly || !blocked;
+    unblock.hidden = !iBlocked;
+    // Not naming who blocked whom when it wasn't you — that only starts arguments.
+    text.textContent = iBlocked
+      ? "You blocked this chat. Neither of you can send messages."
+      : "Messages are turned off in this chat.";
+  }
+
+  async function toggleBlock() {
+    if (!CHAT.openId || CHAT.readOnly) return;
+    const ref = doc(db, "chats", CHAT.openId, "blocks", CHAT.uid);
+    try {
+      if (CHAT.blocks.includes(CHAT.uid)) await deleteDoc(ref);
+      else if (confirm("Block this chat? Neither of you can send messages until you unblock it.")) {
+        await setDoc(ref, { at: serverTimestamp() });
+      }
+    } catch (err) {
+      alert("Couldn't change that just now.");
+    }
+  }
+
+  $("chatBlock").addEventListener("click", toggleBlock);
+  $("chatUnblock").addEventListener("click", toggleBlock);
+
   // The marker is the message's OWN server timestamp, never this device's clock.
   // Comparing a local clock against a server one left the dot stuck on for
   // anyone whose device ran even slightly behind the server.
