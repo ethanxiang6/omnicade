@@ -2115,7 +2115,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.2";
+  const APP_VERSION = "2026.09.18.3";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2844,9 +2844,9 @@ body:has(.adm[open]) { overflow: hidden; }
 
   const CHAT = {
     uid: null, email: "", admin: false,
-    chats: [], requests: [], adminChats: [], prefs: { nicknames: {}, reads: {} },
+    chats: [], requests: [], adminChats: [], people: [], prefs: { nicknames: {}, reads: {} },
     openId: null, openChat: null, readOnly: false, adminMode: false,
-    stops: [], stopMessages: null, searchTimer: 0,
+    stops: [], stopMessages: null,
   };
 
   const chatIdFor = (a, b) => [a, b].sort().join("__");
@@ -2877,7 +2877,8 @@ body:has(.adm[open]) { overflow: hidden; }
     chatAdminFolder.hidden = !CHAT.admin;
 
     // Lets other people find this account by email.
-    setDoc(doc(db, "directory", uid), { email: CHAT.email, isAdmin: CHAT.admin }, { merge: true }).catch(() => {});
+    setDoc(doc(db, "directory", uid), { email: CHAT.email, isAdmin: CHAT.admin }, { merge: true })
+      .then(loadPeople).catch(loadPeople);
 
     CHAT.stops.push(onSnapshot(doc(db, "prefs", uid), (snap) => {
       const d = snap.exists() ? snap.data() : {};
@@ -2907,7 +2908,7 @@ body:has(.adm[open]) { overflow: hidden; }
     CHAT.stops = [];
     if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
     Object.assign(CHAT, {
-      uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [],
+      uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [], people: [],
       prefs: { nicknames: {}, reads: {} }, openId: null, openChat: null,
       readOnly: false, adminMode: false,
     });
@@ -3118,26 +3119,41 @@ body:has(.adm[open]) { overflow: hidden; }
   });
 
   /* ------------------------------ search ------------------------------ */
-  function renderSearch(found, message) {
-    chatSearchResults.replaceChildren();
-    chatSearchResults.hidden = !found && !message;
-    if (message) {
-      const p = document.createElement("p");
-      p.className = "chat-empty";
-      p.textContent = message;
-      chatSearchResults.appendChild(p);
-      return;
+  // Everyone who has signed in is listed, so the search box completes as you
+  // type instead of needing a full address. Admins are left out for everyone
+  // but other admins — they start conversations, nobody starts one with them.
+  async function loadPeople() {
+    if (!CHAT.uid) return;
+    try {
+      const qs = await getDocs(query(collection(db, "directory"), limit(300)));
+      CHAT.people = qs.docs.map((d) => ({
+        uid: d.id, email: d.data().email || "", isAdmin: d.data().isAdmin === true,
+      }));
+    } catch (err) {
+      CHAT.people = [];
     }
+  }
+
+  function searchMessage(text) {
+    chatSearchResults.replaceChildren();
+    chatSearchResults.hidden = false;
+    const p = document.createElement("p");
+    p.className = "chat-empty";
+    p.textContent = text;
+    chatSearchResults.appendChild(p);
+  }
+
+  function peopleRow(person) {
     const row = document.createElement("div");
     row.className = "chat-req";
     const em = document.createElement("span");
     em.className = "em";
-    em.textContent = found.isAdmin ? "Admin" : found.email;
+    em.textContent = person.isAdmin ? "Admin" : person.email;
     const act = document.createElement("button");
     act.type = "button";
     act.className = "chat-mini yes";
 
-    const existing = CHAT.chats.find((c) => c.id === chatIdFor(CHAT.uid, found.uid));
+    const existing = CHAT.chats.find((c) => c.id === chatIdFor(CHAT.uid, person.uid));
     act.textContent = existing ? "Open" : CHAT.admin ? "Message" : "Add friend";
     act.addEventListener("click", async () => {
       act.disabled = true;
@@ -3145,14 +3161,15 @@ body:has(.adm[open]) { overflow: hidden; }
         if (existing) { openChat(existing); return; }
         if (CHAT.admin) {
           // Admins skip the request step entirely.
-          const id = await createChat(found.uid, found.email, found.isAdmin);
-          openChat({ id, members: [CHAT.uid, found.uid].sort(),
-            emails: { [CHAT.uid]: CHAT.email, [found.uid]: found.email },
-            admins: { [CHAT.uid]: true, [found.uid]: !!found.isAdmin } });
+          const id = await createChat(person.uid, person.email, person.isAdmin);
+          const emails = {}, admins = {};
+          emails[CHAT.uid] = CHAT.email; emails[person.uid] = person.email;
+          admins[CHAT.uid] = true; admins[person.uid] = !!person.isAdmin;
+          openChat({ id, members: [CHAT.uid, person.uid].sort(), emails, admins });
           return;
         }
-        await setDoc(doc(db, "friendRequests", CHAT.uid + "__" + found.uid), {
-          from: CHAT.uid, to: found.uid, fromEmail: CHAT.email, toEmail: found.email,
+        await setDoc(doc(db, "friendRequests", CHAT.uid + "__" + person.uid), {
+          from: CHAT.uid, to: person.uid, fromEmail: CHAT.email, toEmail: person.email,
           fromIsAdmin: CHAT.admin, status: "pending", at: serverTimestamp(),
         });
         act.textContent = "Sent";
@@ -3161,32 +3178,41 @@ body:has(.adm[open]) { overflow: hidden; }
       }
     });
     row.append(em, act);
-    chatSearchResults.appendChild(row);
+    return row;
   }
 
-  chatSearch.addEventListener("input", () => {
-    clearTimeout(CHAT.searchTimer);
+  function renderPeople() {
     const term = chatSearch.value.trim().toLowerCase();
-    if (!term) { chatSearchResults.hidden = true; return; }
-    CHAT.searchTimer = setTimeout(async () => {
-      if (!term.includes("@")) return renderSearch(null, "Search using a full email address.");
-      try {
-        const qs = await getDocs(query(collection(db, "directory"), where("email", "==", term), limit(1)));
-        if (qs.empty) return renderSearch(null, "Nobody here uses that email.");
-        const d = qs.docs[0];
-        if (d.id === CHAT.uid) return renderSearch(null, "That's you.");
-        renderSearch({ uid: d.id, email: d.data().email, isAdmin: d.data().isAdmin === true });
-      } catch (err) {
-        renderSearch(null, "Couldn't search right now.");
-      }
-    }, 300);
+    const visible = CHAT.people.filter((p) => p.uid !== CHAT.uid && (CHAT.admin || !p.isAdmin));
+    const matches = term ? visible.filter((p) => p.email.includes(term)) : visible;
+
+    if (!matches.length) {
+      // Say so plainly when the only match is an admin, rather than "not found".
+      const hiddenAdmin = !CHAT.admin && term &&
+        CHAT.people.some((p) => p.isAdmin && p.email.includes(term));
+      if (hiddenAdmin) return searchMessage("Admins start their own chats — you can't message one first.");
+      return searchMessage(CHAT.people.length > 1 ? "No one here matches that." : "Nobody else has signed in yet.");
+    }
+
+    chatSearchResults.replaceChildren();
+    chatSearchResults.hidden = false;
+    matches
+      .sort((a, b) => a.email.localeCompare(b.email))
+      .slice(0, 30)
+      .forEach((p) => chatSearchResults.appendChild(peopleRow(p)));
+  }
+
+  chatSearch.addEventListener("focus", renderPeople);
+  chatSearch.addEventListener("input", renderPeople);
+  chatSearch.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); chatSearch.value = ""; chatSearchResults.hidden = true; }
   });
 
   /* ------------------------------ wiring ------------------------------ */
   chatFab.addEventListener("click", () => {
     const open = chatPanel.classList.toggle("on");
     chatRoot.classList.remove("dim");
-    if (open) { showChatList(); chatSearch.value = ""; chatSearchResults.hidden = true; }
+    if (open) { showChatList(); chatSearch.value = ""; chatSearchResults.hidden = true; loadPeople(); }
   });
   $("chatClose").addEventListener("click", () => chatPanel.classList.remove("on"));
   $("chatClose2").addEventListener("click", () => chatPanel.classList.remove("on"));
