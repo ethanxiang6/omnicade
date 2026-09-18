@@ -804,6 +804,23 @@ body:has(.adm[open]) { overflow: hidden; }
 .pill.admin { color: var(--bone); background: var(--ink-3); border: 1px solid var(--line); }
 .pill.denied { color: var(--rust); background: rgba(229,83,61,.12); }
 
+.adm-note { margin-top: .5rem; }
+.adm-note-btn {
+  max-width: 100%; padding: .12rem 0; text-align: left; cursor: pointer;
+  background: none; border: 0; border-bottom: 1px dashed var(--line);
+  font-family: var(--f-mono); font-size: .69rem; line-height: 1.45;
+  color: var(--bone); overflow-wrap: anywhere;
+}
+.adm-note-btn:hover { color: var(--phosphor); border-bottom-color: var(--phosphor-d); }
+.adm-note-btn.empty { color: var(--slate); }
+.adm-note-btn:disabled { color: var(--slate); cursor: default; }
+.adm-note-input {
+  width: min(100%, 260px); padding: .32rem .45rem; border-radius: 2px; outline: none;
+  background: var(--ink); border: 1px solid var(--phosphor-d); color: var(--bone);
+  font-family: var(--f-mono); font-size: .7rem;
+}
+.adm-note-input::placeholder { color: var(--slate); opacity: .7; }
+
 .adm-acts { display: flex; flex-wrap: wrap; gap: .5rem; }
 .adm-act { padding: .55rem .9rem; font-size: .68rem; min-width: 6.6rem; justify-content: center; }
 .adm-act.quiet { background: transparent; }
@@ -829,6 +846,167 @@ body:has(.adm[open]) { overflow: hidden; }
 @media (max-width: 480px) {
   .gate-view { padding: 1.3rem 1.1rem 1.2rem; }
   .gate-head .tty span:last-child { display: none; }
+}
+
+/* ============================================================
+   CHAT — floating button, panel, conversations
+   ============================================================ */
+#chatRoot { position: fixed; right: 1.1rem; bottom: 1.1rem; z-index: 930; display: none; }
+#chatRoot.on { display: block; }
+
+#chatFab {
+  position: relative; width: 52px; height: 52px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; border: 0;
+  background: var(--phosphor); color: #1A1204;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  transition: transform .2s var(--ease), opacity .35s var(--ease);
+}
+#chatFab:hover { transform: translateY(-2px); }
+#chatFab svg { width: 24px; height: 24px; display: block; }
+#chatRoot.dim #chatFab { opacity: 0; pointer-events: none; }
+
+.chat-dot {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--rust); border: 2px solid var(--ink);
+}
+#chatFab .chat-dot { top: -3px; left: -3px; }
+#chatFab .chat-dot[hidden] { display: none; }
+
+#chatPanel {
+  position: absolute; right: 0; bottom: 66px; display: none; flex-direction: column; overflow: hidden;
+  width: min(360px, calc(100vw - 2rem)); height: min(540px, calc(100vh - 9rem));
+  background: var(--ink-2); border: 1px solid var(--line);
+  box-shadow: 0 0 0 1px rgba(255,178,63,.06), 0 30px 90px rgba(0,0,0,.65);
+}
+#chatPanel.on { display: flex; }
+#chatPanel [hidden] { display: none !important; }
+
+.chat-head {
+  display: flex; align-items: center; gap: .6rem; flex: none;
+  padding: .75rem .9rem; border-bottom: 1px solid var(--line); background: var(--ink-3);
+}
+.chat-head .t {
+  font-family: var(--f-mono); font-size: .72rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--bone); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-icon-btn {
+  flex: none; background: none; border: 0; cursor: pointer; padding: .25rem .4rem;
+  color: var(--slate); font-family: var(--f-mono); font-size: .8rem;
+}
+.chat-icon-btn:hover { color: var(--bone); }
+
+.chat-searchbar { flex: none; padding: .6rem .7rem; border-bottom: 1px solid var(--line); }
+.chat-searchbar input {
+  width: 100%; padding: .5rem .65rem; border-radius: 2px; outline: none;
+  background: var(--ink); border: 1px solid var(--line); color: var(--bone);
+  font-family: var(--f-mono); font-size: .74rem;
+}
+.chat-searchbar input:focus { border-color: var(--phosphor-d); }
+.chat-searchbar input::placeholder { color: var(--slate); opacity: .7; }
+
+.chat-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+
+.chat-folder {
+  display: flex; align-items: center; gap: .55rem; width: 100%;
+  padding: .7rem .9rem; cursor: pointer; text-align: left;
+  background: var(--ink-3); border: 0; border-bottom: 1px solid var(--line);
+  font-family: var(--f-mono); font-size: .68rem; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--slate);
+}
+.chat-folder:hover { color: var(--bone); }
+.chat-folder .count {
+  margin-left: auto; padding: .05rem .4rem; border-radius: 999px;
+  background: var(--rust); color: #1A0A07; font-size: .62rem; letter-spacing: 0;
+}
+.chat-folder .count[hidden] { display: none; }
+.chat-folder.bottom { border-top: 1px solid var(--line); border-bottom: 0; }
+
+.chat-row {
+  display: flex; align-items: center; gap: .7rem; width: 100%;
+  padding: .7rem .9rem; cursor: pointer; text-align: left;
+  background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--bone);
+  font-family: var(--f-text);
+}
+.chat-row:hover { background: var(--ink-3); }
+.chat-row .who { flex: 1; min-width: 0; }
+.chat-row .nm {
+  display: block; font-size: .88rem; font-weight: 600; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-row .pv {
+  display: block; margin-top: .15rem; font-family: var(--f-mono); font-size: .66rem;
+  color: var(--slate); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-row .chat-dot { position: static; flex: none; border-color: var(--ink-2); }
+.chat-row .chat-dot[hidden] { display: none; }
+
+.chat-empty {
+  margin: 0; padding: 1.4rem 1rem; text-align: center;
+  font-family: var(--f-mono); font-size: .7rem; line-height: 1.6; color: var(--slate);
+}
+
+/* Home-page section explaining chat, including who can read what. */
+.chat-facts {
+  display: grid; gap: 1px; margin-top: 2.6rem;
+  background: var(--line); border: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.chat-fact { background: var(--ink); padding: 1.4rem 1.25rem; }
+.chat-fact h3 {
+  font-family: var(--f-mono); font-size: .66rem; font-weight: 500;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--phosphor-d);
+}
+.chat-fact p { margin: .6rem 0 0; font-size: .88rem; line-height: 1.6; color: var(--slate); }
+.chat-fact p strong { color: var(--bone); font-weight: 600; }
+.chat-review {
+  margin: 1.6rem 0 0; padding: .95rem 1.1rem;
+  border-left: 2px solid var(--rust); background: rgba(229,83,61,.06);
+  font-family: var(--f-mono); font-size: .76rem; line-height: 1.7; color: var(--slate);
+}
+.chat-review strong { color: var(--bone); font-weight: 500; }
+
+.chat-req { display: flex; align-items: center; gap: .5rem; padding: .7rem .9rem; border-bottom: 1px solid var(--line); }
+.chat-req .em {
+  flex: 1; min-width: 0; font-family: var(--f-mono); font-size: .7rem;
+  color: var(--bone); overflow-wrap: anywhere;
+}
+.chat-mini {
+  flex: none; padding: .35rem .6rem; border-radius: 2px; cursor: pointer;
+  font-family: var(--f-mono); font-size: .64rem; letter-spacing: .08em; text-transform: uppercase;
+  border: 1px solid var(--line); background: var(--ink-3); color: var(--bone);
+}
+.chat-mini:hover { border-color: var(--phosphor-d); color: var(--phosphor); }
+.chat-mini.yes { background: var(--phosphor); border-color: var(--phosphor); color: #1A1204; }
+.chat-mini.yes:hover { background: #FFC46B; color: #1A1204; }
+.chat-mini.no:hover { border-color: var(--rust); color: var(--rust); }
+
+#chatMessages { display: flex; flex-direction: column; gap: .45rem; padding: .8rem; }
+.chat-msg {
+  max-width: 82%; padding: .45rem .65rem; border-radius: 10px;
+  font-size: .82rem; line-height: 1.45; overflow-wrap: anywhere;
+  background: var(--ink-3); color: var(--bone); align-self: flex-start;
+}
+.chat-msg.mine { align-self: flex-end; background: var(--phosphor); color: #1A1204; }
+.chat-msg .when {
+  display: block; margin-top: .2rem; font-family: var(--f-mono); font-size: .58rem; opacity: .65;
+}
+.chat-msg .sender {
+  display: block; margin-bottom: .15rem; font-family: var(--f-mono); font-size: .58rem;
+  letter-spacing: .1em; text-transform: uppercase; opacity: .7;
+}
+
+#chatForm { display: flex; gap: .45rem; flex: none; padding: .6rem; border-top: 1px solid var(--line); }
+#chatInput {
+  flex: 1; min-width: 0; padding: .55rem .65rem; border-radius: 2px; outline: none;
+  background: var(--ink); border: 1px solid var(--line); color: var(--bone);
+  font-family: var(--f-text); font-size: .84rem;
+}
+#chatInput:focus { border-color: var(--phosphor-d); }
+#chatForm button { flex: none; padding: .55rem .8rem; font-size: .68rem; }
+
+@media (max-width: 480px) {
+  #chatPanel { width: calc(100vw - 1.6rem); height: min(70vh, calc(100vh - 7rem)); }
 }
 
 /* ============================================================
@@ -971,6 +1149,7 @@ body:has(.adm[open]) { overflow: hidden; }
   <span class="spacer"></span>
   <a href="#forensics" class="navlink">The header problem</a>
   <a href="#library" class="navlink">Library</a>
+  <a href="#messages" class="navlink">Chats</a>
   <a href="#" id="navPlay">Open player →</a>
   <button type="button" class="btn btn-ghost" id="adminBtn" hidden>
     Admin <span class="adm-badge" id="adminBadge" hidden>0</span>
@@ -1088,6 +1267,47 @@ body:has(.adm[open]) { overflow: hidden; }
   </div>
 </section>
 
+<!-- ========================== CHATS ============================= -->
+<section class="section" id="messages" style="padding-top:0">
+  <div class="wrap">
+    <p class="eyebrow reveal">Messages</p>
+    <h2 class="reveal" style="--i:1">Chats.</h2>
+    <p class="lede reveal" style="--i:2">
+      The button in the bottom-right corner opens your messages — on this page and over a game,
+      windowed or fullscreen. Conversations, friends and nicknames are saved to your account, so
+      they follow you to any device you sign in on.
+    </p>
+
+    <div class="chat-facts reveal" style="--i:3">
+      <div class="chat-fact">
+        <h3>Friend requests</h3>
+        <p>Search someone by <strong>email</strong> and send a request. They have to accept before
+           either of you can send a message, and requests wait in a folder at the top of your list.</p>
+      </div>
+      <div class="chat-fact">
+        <h3>Private nicknames</h3>
+        <p>Rename anyone in your chats. The name you pick is <strong>yours alone</strong> — the other
+           person never sees it, and neither do admins.</p>
+      </div>
+      <div class="chat-fact">
+        <h3>Unread dots</h3>
+        <p>A red dot sits on the chat button when someone messages you, and on that person's row
+           inside the list, so you can see <strong>who</strong> it came from at a glance.</p>
+      </div>
+      <div class="chat-fact">
+        <h3>Admins</h3>
+        <p>Admins can start a chat with anyone without a request, and always appear as
+           <strong>"Admin"</strong> — that one name can't be changed.</p>
+      </div>
+    </div>
+
+    <p class="chat-review reveal" style="--i:4">
+      <strong>Safety:</strong> an admin can read any conversation on this site, including private
+      messages between two people.
+    </p>
+  </div>
+</section>
+
 <footer>
   <div class="wrap fl">
     <span>ATTRACT MODE — a single HTML file. Right-click a saved entry in the player to remove it.</span>
@@ -1098,6 +1318,58 @@ body:has(.adm[open]) { overflow: hidden; }
 <div class="screen-fx fx-scan"></div>
 <div class="screen-fx fx-grain"></div>
 <div class="screen-fx fx-vig"></div>
+
+<!-- ============================ CHAT ============================ -->
+<div id="chatRoot">
+  <div id="chatPanel" role="dialog" aria-label="Messages">
+    <!-- list view -->
+    <div id="chatListView" style="display:flex; flex-direction:column; flex:1; min-height:0">
+      <div class="chat-head">
+        <span class="t">Messages</span>
+        <button type="button" class="chat-icon-btn" id="chatClose" aria-label="Close messages">✕</button>
+      </div>
+      <div class="chat-searchbar">
+        <input id="chatSearch" type="search" autocomplete="off" spellcheck="false"
+               placeholder="Find someone by email…" aria-label="Search people by email">
+      </div>
+      <div class="chat-scroll">
+        <div id="chatSearchResults" hidden></div>
+        <button type="button" class="chat-folder" id="chatReqFolder">
+          Friend requests <span class="count" id="chatReqCount" hidden>0</span>
+        </button>
+        <div id="chatReqList" hidden></div>
+        <div id="chatList"></div>
+        <p class="chat-empty" id="chatEmpty" hidden>No chats yet. Search an email to send a friend request.</p>
+        <button type="button" class="chat-folder bottom" id="chatAdminFolder" hidden>
+          All chats · safety review
+        </button>
+      </div>
+    </div>
+
+    <!-- conversation view -->
+    <div id="chatConvo" hidden style="display:flex; flex-direction:column; flex:1; min-height:0">
+      <div class="chat-head">
+        <button type="button" class="chat-icon-btn" id="chatBack" aria-label="Back to all chats">‹</button>
+        <span class="t" id="chatConvoName"></span>
+        <button type="button" class="chat-icon-btn" id="chatRename" title="Rename this person (only you see it)">✎</button>
+        <button type="button" class="chat-icon-btn" id="chatClose2" aria-label="Close messages">✕</button>
+      </div>
+      <div class="chat-scroll" id="chatMessages"></div>
+      <form id="chatForm">
+        <input id="chatInput" type="text" maxlength="2000" autocomplete="off" placeholder="Message…" aria-label="Message">
+        <button type="submit" class="btn btn-primary">Send</button>
+      </form>
+    </div>
+  </div>
+
+  <button type="button" id="chatFab" aria-label="Messages">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 8.7 8.7 0 0 1-3.8-.9L3 20.5l1.7-4.9a8.2 8.2 0 0 1-1-4.1A8.4 8.4 0 0 1 12.2 3 8.4 8.4 0 0 1 21 11.5z"/>
+    </svg>
+    <span class="chat-dot" id="chatDot" hidden></span>
+  </button>
+</div>
 
 <!-- ========================== PLAYER ============================ -->
 <div id="player">
@@ -1798,7 +2070,8 @@ body:has(.adm[open]) { overflow: hidden; }
     createUserWithEmailAndPassword, signOut,
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
   import {
-    getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, serverTimestamp, writeBatch,
+    getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, collection,
+    query, where, orderBy, limit, serverTimestamp, writeBatch,
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -1842,7 +2115,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.17.6";
+  const APP_VERSION = "2026.09.18.1";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -1852,6 +2125,7 @@ body:has(.adm[open]) { overflow: hidden; }
   let users = [];
   let adminFilter = "pending";
   const busy = new Map();
+  let editingNoteFor = null;
 
   /* ------------------------------ view ------------------------------ */
   function showView(name) {
@@ -1872,6 +2146,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   function lockGate() {
     setAdmin(false);
+    chatStop();
     gate.classList.remove("gate-hidden");
     gate.setAttribute("aria-hidden", "false");
     setBackgroundInert(true);
@@ -2075,11 +2350,13 @@ body:has(.adm[open]) { overflow: hidden; }
             if (!auth.currentUser || auth.currentUser.uid !== uid) return;
             unlockGate();
             setAdmin(admin);
+            chatStart(uid, user.email, admin);
           }, approvalRevealAt - Date.now());
           return;
         }
         unlockGate();
         setAdmin(data.isAdmin === true);
+        chatStart(user.uid, user.email, data.isAdmin === true);
       } else {
         // Pending: signed up from an older copy of this page, or revoked by an admin.
         cancelApprovalPause();
@@ -2329,7 +2606,7 @@ body:has(.adm[open]) { overflow: hidden; }
     unblock: { label: "Unblock",   cls: "btn adm-act quiet",       data: { isApproved: false, isDenied: false } },
   };
 
-  function renderAdmin() {
+  function renderAdmin(force) {
     const counts = { pending: 0, approved: 0, denied: 0 };
     users.forEach((u) => { counts[statusOf(u)]++; });
 
@@ -2344,6 +2621,9 @@ body:has(.adm[open]) { overflow: hidden; }
       : "Admin panel");
 
     if (!adminPanel.open) return;
+
+    // Someone else's change arriving mid-edit must not wipe what's being typed.
+    if (editingNoteFor && !force && adminList.childElementCount) return;
 
     document.querySelectorAll(".adm-tab").forEach((tab) =>
       tab.setAttribute("aria-pressed", String(tab.dataset.filter === adminFilter)));
@@ -2390,6 +2670,15 @@ body:has(.adm[open]) { overflow: hidden; }
         meta.appendChild(date);
       }
       who.appendChild(meta);
+
+      // Your own label for this person. Reads a `name` field too, so notes typed
+      // straight into the Firebase console still show up; editing here saves `note`.
+      const noteWrap = document.createElement("div");
+      noteWrap.className = "adm-note";
+      if (editingNoteFor === u.uid) buildNoteInput(u, noteWrap);
+      else buildNoteButton(u, noteWrap);
+      who.appendChild(noteWrap);
+
       li.appendChild(who);
 
       if (u.uid === me) {
@@ -2455,6 +2744,61 @@ body:has(.adm[open]) { overflow: hidden; }
     }
   }
 
+  const noteOf = (u) => String(u.note || u.name || "");
+
+  function buildNoteButton(u, wrap) {
+    const text = noteOf(u);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "adm-note-btn" + (text ? "" : " empty");
+    btn.textContent = busy.get(u.uid) === "note" ? "Saving…" : text || "+ Add note";
+    btn.title = "A private label for this person, visible only to admins";
+    btn.disabled = busy.has(u.uid);
+    btn.addEventListener("click", () => { editingNoteFor = u.uid; renderAdmin(true); });
+    wrap.replaceChildren(btn);
+  }
+
+  function buildNoteInput(u, wrap) {
+    const input = document.createElement("input");
+    input.className = "adm-note-input";
+    input.type = "text";
+    input.maxLength = 60;
+    input.value = noteOf(u);
+    input.placeholder = "e.g. Ethan, math class";
+    input.setAttribute("aria-label", "Note about " + (u.email || "this account"));
+    wrap.replaceChildren(input);
+    requestAnimationFrame(() => { input.focus(); input.select(); });
+
+    let settled = false;
+    const finish = (save) => {
+      if (settled) return;
+      settled = true;
+      const text = input.value.trim();
+      editingNoteFor = null;
+      if (save && text !== noteOf(u)) saveNote(u, text);
+      else renderAdmin(true);
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+    });
+    input.addEventListener("blur", () => finish(true));
+  }
+
+  async function saveNote(u, text) {
+    busy.set(u.uid, "note");
+    setAdminError("");
+    renderAdmin(true);
+    try {
+      await updateDoc(doc(db, "users", u.uid), { note: text });
+    } catch (err) {
+      setAdminError("Couldn't save the note for " + (u.email || "that account") + ". " + describe(err));
+    } finally {
+      busy.delete(u.uid);
+      renderAdmin(true);
+    }
+  }
+
   async function changeAccess(u, key) {
     busy.set(u.uid, key);
     setAdminError("");
@@ -2478,10 +2822,406 @@ body:has(.adm[open]) { overflow: hidden; }
   });
 
   document.querySelectorAll(".adm-tab").forEach((tab) =>
-    tab.addEventListener("click", () => { adminFilter = tab.dataset.filter; renderAdmin(); }));
+    tab.addEventListener("click", () => { adminFilter = tab.dataset.filter; editingNoteFor = null; renderAdmin(true); }));
 
   $("adminClose").addEventListener("click", () => adminPanel.close());
   adminPanel.addEventListener("click", (e) => { if (e.target === adminPanel) adminPanel.close(); });
+
+  /* =============================== CHAT =============================== */
+  // Firestore layout:
+  //   directory/{uid}            { email, isAdmin }        — so people can be found by email
+  //   friendRequests/{from__to}  { from, to, emails, status }
+  //   chats/{a__b}               { members, emails, admins, lastText, lastFrom, lastAt }
+  //   chats/{id}/messages/{auto} { from, text, at }        — never editable, even by admins
+  //   prefs/{uid}                { nicknames, reads }      — private to that person alone
+  const chatRoot = $("chatRoot"), chatFab = $("chatFab"), chatDot = $("chatDot"),
+        chatPanel = $("chatPanel"), chatListView = $("chatListView"), chatConvo = $("chatConvo"),
+        chatSearch = $("chatSearch"), chatSearchResults = $("chatSearchResults"),
+        chatListEl = $("chatList"), chatEmpty = $("chatEmpty"), chatReqFolder = $("chatReqFolder"),
+        chatReqCount = $("chatReqCount"), chatReqList = $("chatReqList"),
+        chatAdminFolder = $("chatAdminFolder"), chatMessagesEl = $("chatMessages"),
+        chatConvoName = $("chatConvoName"), chatForm = $("chatForm"), chatInput = $("chatInput");
+
+  const CHAT = {
+    uid: null, email: "", admin: false,
+    chats: [], requests: [], adminChats: [], prefs: { nicknames: {}, reads: {} },
+    openId: null, openChat: null, readOnly: false, adminMode: false,
+    stops: [], stopMessages: null, searchTimer: 0,
+  };
+
+  const chatIdFor = (a, b) => [a, b].sort().join("__");
+  const asMillis = (v) => (v && typeof v.toMillis === "function" ? v.toMillis() : 0);
+  const otherOf = (chat) => (chat.members || []).find((m) => m !== CHAT.uid) || "";
+
+  function nameFor(chat, forAdminView) {
+    if (forAdminView) {
+      const es = chat.emails || {};
+      return (chat.members || []).map((m) => (chat.admins && chat.admins[m] ? "Admin" : es[m] || "?")).join("  ↔  ");
+    }
+    const other = otherOf(chat);
+    // An admin is always "Admin" — that name can't be overridden by a nickname.
+    if (chat.admins && chat.admins[other]) return "Admin";
+    return CHAT.prefs.nicknames[other] || (chat.emails && chat.emails[other]) || "Someone";
+  }
+
+  const isUnread = (chat) =>
+    !!chat.lastAt && chat.lastFrom !== CHAT.uid && asMillis(chat.lastAt) > (CHAT.prefs.reads[chat.id] || 0);
+
+  function chatStart(uid, email, admin) {
+    if (CHAT.uid === uid && CHAT.admin === admin) return;
+    chatStop();
+    CHAT.uid = uid;
+    CHAT.email = (email || "").toLowerCase();
+    CHAT.admin = !!admin;
+    chatRoot.classList.add("on");
+    chatAdminFolder.hidden = !CHAT.admin;
+
+    // Lets other people find this account by email.
+    setDoc(doc(db, "directory", uid), { email: CHAT.email, isAdmin: CHAT.admin }, { merge: true }).catch(() => {});
+
+    CHAT.stops.push(onSnapshot(doc(db, "prefs", uid), (snap) => {
+      const d = snap.exists() ? snap.data() : {};
+      CHAT.prefs = { nicknames: d.nicknames || {}, reads: d.reads || {} };
+      renderChatList();
+      if (CHAT.openChat && !CHAT.readOnly) chatConvoName.textContent = nameFor(CHAT.openChat);
+    }, () => {}));
+
+    CHAT.stops.push(onSnapshot(
+      query(collection(db, "chats"), where("members", "array-contains", uid), limit(100)),
+      (qs) => {
+        CHAT.chats = qs.docs.map((d) => Object.assign({ id: d.id }, d.data()))
+          .sort((a, b) => asMillis(b.lastAt) - asMillis(a.lastAt));
+        renderChatList();
+      }, () => {}));
+
+    CHAT.stops.push(onSnapshot(
+      query(collection(db, "friendRequests"), where("to", "==", uid), where("status", "==", "pending")),
+      (qs) => {
+        CHAT.requests = qs.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+        renderRequests();
+      }, () => {}));
+  }
+
+  function chatStop() {
+    CHAT.stops.forEach((fn) => { try { fn(); } catch (e) {} });
+    CHAT.stops = [];
+    if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
+    Object.assign(CHAT, {
+      uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [],
+      prefs: { nicknames: {}, reads: {} }, openId: null, openChat: null,
+      readOnly: false, adminMode: false,
+    });
+    chatRoot.classList.remove("on");
+    chatPanel.classList.remove("on");
+    chatDot.hidden = true;
+  }
+
+  /* ------------------------------ views ------------------------------ */
+  function showChatList() {
+    CHAT.openId = null;
+    CHAT.openChat = null;
+    if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
+    chatConvo.hidden = true;
+    chatListView.hidden = false;
+    renderChatList();
+  }
+
+  function renderChatList() {
+    const list = CHAT.adminMode ? CHAT.adminChats : CHAT.chats;
+    chatListEl.replaceChildren();
+
+    list.forEach((chat) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "chat-row";
+
+      const who = document.createElement("span");
+      who.className = "who";
+      const nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = nameFor(chat, CHAT.adminMode);
+      const pv = document.createElement("span");
+      pv.className = "pv";
+      pv.textContent = chat.lastText
+        ? (chat.lastFrom === CHAT.uid ? "You: " : "") + chat.lastText
+        : "No messages yet";
+      who.append(nm, pv);
+      row.appendChild(who);
+
+      if (!CHAT.adminMode && isUnread(chat)) {
+        const dot = document.createElement("span");
+        dot.className = "chat-dot";
+        row.appendChild(dot);
+      }
+      row.addEventListener("click", () => openChat(chat, CHAT.adminMode));
+      chatListEl.appendChild(row);
+    });
+
+    chatEmpty.hidden = list.length > 0;
+    chatEmpty.textContent = CHAT.adminMode
+      ? "No conversations on the site yet."
+      : "No chats yet. Search an email to send a friend request.";
+    chatAdminFolder.textContent = CHAT.adminMode ? "← Back to my chats" : "All chats · safety review";
+    chatDot.hidden = !CHAT.chats.some(isUnread);
+  }
+
+  function renderRequests() {
+    chatReqCount.textContent = String(CHAT.requests.length);
+    chatReqCount.hidden = CHAT.requests.length === 0;
+    chatReqList.replaceChildren();
+
+    if (!CHAT.requests.length) {
+      const none = document.createElement("p");
+      none.className = "chat-empty";
+      none.textContent = "No pending requests.";
+      chatReqList.appendChild(none);
+    }
+
+    CHAT.requests.forEach((req) => {
+      const row = document.createElement("div");
+      row.className = "chat-req";
+      const em = document.createElement("span");
+      em.className = "em";
+      em.textContent = req.fromIsAdmin ? "Admin" : req.fromEmail || "Someone";
+      const yes = document.createElement("button");
+      yes.type = "button";
+      yes.className = "chat-mini yes";
+      yes.textContent = "Accept";
+      yes.addEventListener("click", () => respond(req, true, yes, no));
+      const no = document.createElement("button");
+      no.type = "button";
+      no.className = "chat-mini no";
+      no.textContent = "Deny";
+      no.addEventListener("click", () => respond(req, false, yes, no));
+      row.append(em, yes, no);
+      chatReqList.appendChild(row);
+    });
+
+    if (CHAT.requests.length) chatDot.hidden = false;
+  }
+
+  function openChat(chat, readOnly) {
+    CHAT.openId = chat.id;
+    CHAT.openChat = chat;
+    CHAT.readOnly = !!readOnly;
+    chatListView.hidden = true;
+    chatConvo.hidden = false;
+    chatConvoName.textContent = nameFor(chat, readOnly);
+    chatForm.hidden = !!readOnly;
+    $("chatRename").hidden = !!readOnly || !!(chat.admins && chat.admins[otherOf(chat)]);
+    chatMessagesEl.replaceChildren();
+    if (!readOnly) markRead(chat.id);
+
+    if (CHAT.stopMessages) CHAT.stopMessages();
+    CHAT.stopMessages = onSnapshot(
+      query(collection(db, "chats", chat.id, "messages"), orderBy("at", "desc"), limit(200)),
+      (qs) => {
+        const msgs = qs.docs.map((d) => d.data()).reverse();
+        renderMessages(msgs, readOnly, chat);
+        if (!readOnly) markRead(chat.id);
+      }, () => {});
+  }
+
+  function renderMessages(msgs, readOnly, chat) {
+    chatMessagesEl.replaceChildren();
+    msgs.forEach((m) => {
+      const el = document.createElement("div");
+      el.className = "chat-msg" + (m.from === CHAT.uid && !readOnly ? " mine" : "");
+      if (readOnly) {
+        const who = document.createElement("span");
+        who.className = "sender";
+        who.textContent = (chat.admins && chat.admins[m.from]) ? "Admin" : ((chat.emails || {})[m.from] || "?");
+        el.appendChild(who);
+      }
+      el.appendChild(document.createTextNode(m.text || ""));
+      const when = asMillis(m.at);
+      if (when) {
+        const t = document.createElement("span");
+        t.className = "when";
+        t.textContent = new Date(when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        el.appendChild(t);
+      }
+      chatMessagesEl.appendChild(el);
+    });
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  /* ------------------------------ actions ------------------------------ */
+  function markRead(chatId) {
+    const reads = Object.assign({}, CHAT.prefs.reads);
+    reads[chatId] = Date.now();
+    CHAT.prefs.reads = reads;
+    renderChatList();
+    setDoc(doc(db, "prefs", CHAT.uid), { reads }, { merge: true }).catch(() => {});
+  }
+
+  async function createChat(otherUid, otherEmail, otherIsAdmin) {
+    const id = chatIdFor(CHAT.uid, otherUid);
+    const emails = {}, admins = {};
+    emails[CHAT.uid] = CHAT.email;
+    emails[otherUid] = (otherEmail || "").toLowerCase();
+    admins[CHAT.uid] = CHAT.admin;
+    admins[otherUid] = !!otherIsAdmin;
+    await setDoc(doc(db, "chats", id), {
+      members: [CHAT.uid, otherUid].sort(), emails, admins,
+      lastText: "", lastFrom: "", lastAt: serverTimestamp(),
+    }, { merge: true });
+    return id;
+  }
+
+  async function respond(req, accept, yesBtn, noBtn) {
+    yesBtn.disabled = noBtn.disabled = true;
+    try {
+      // Status first: the rules only allow the chat once the request is accepted.
+      await updateDoc(doc(db, "friendRequests", req.id), { status: accept ? "accepted" : "denied" });
+      if (accept) await createChat(req.from, req.fromEmail, req.fromIsAdmin);
+    } catch (err) {
+      yesBtn.disabled = noBtn.disabled = false;
+      noBtn.textContent = "Failed";
+      setTimeout(() => { noBtn.textContent = "Deny"; }, 2000);
+    }
+  }
+
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text || !CHAT.openId || CHAT.readOnly) return;
+    chatInput.value = "";
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(collection(db, "chats", CHAT.openId, "messages")), {
+        from: CHAT.uid, text, at: serverTimestamp(),
+      });
+      batch.set(doc(db, "chats", CHAT.openId), {
+        lastText: text, lastFrom: CHAT.uid, lastAt: serverTimestamp(),
+      }, { merge: true });
+      await batch.commit();
+    } catch (err) {
+      chatInput.value = text;
+    }
+  });
+
+  $("chatRename").addEventListener("click", () => {
+    const chat = CHAT.openChat;
+    if (!chat || CHAT.readOnly) return;
+    const other = otherOf(chat);
+    if (chat.admins && chat.admins[other]) return;
+    const current = CHAT.prefs.nicknames[other] || "";
+    const next = prompt("Name for this person — only you ever see it:", current);
+    if (next === null) return;
+    const nicknames = Object.assign({}, CHAT.prefs.nicknames);
+    nicknames[other] = next.trim().slice(0, 40);
+    CHAT.prefs.nicknames = nicknames;
+    chatConvoName.textContent = nameFor(chat);
+    renderChatList();
+    setDoc(doc(db, "prefs", CHAT.uid), { nicknames }, { merge: true }).catch(() => {});
+  });
+
+  /* ------------------------------ search ------------------------------ */
+  function renderSearch(found, message) {
+    chatSearchResults.replaceChildren();
+    chatSearchResults.hidden = !found && !message;
+    if (message) {
+      const p = document.createElement("p");
+      p.className = "chat-empty";
+      p.textContent = message;
+      chatSearchResults.appendChild(p);
+      return;
+    }
+    const row = document.createElement("div");
+    row.className = "chat-req";
+    const em = document.createElement("span");
+    em.className = "em";
+    em.textContent = found.isAdmin ? "Admin" : found.email;
+    const act = document.createElement("button");
+    act.type = "button";
+    act.className = "chat-mini yes";
+
+    const existing = CHAT.chats.find((c) => c.id === chatIdFor(CHAT.uid, found.uid));
+    act.textContent = existing ? "Open" : CHAT.admin ? "Message" : "Add friend";
+    act.addEventListener("click", async () => {
+      act.disabled = true;
+      try {
+        if (existing) { openChat(existing); return; }
+        if (CHAT.admin) {
+          // Admins skip the request step entirely.
+          const id = await createChat(found.uid, found.email, found.isAdmin);
+          openChat({ id, members: [CHAT.uid, found.uid].sort(),
+            emails: { [CHAT.uid]: CHAT.email, [found.uid]: found.email },
+            admins: { [CHAT.uid]: true, [found.uid]: !!found.isAdmin } });
+          return;
+        }
+        await setDoc(doc(db, "friendRequests", CHAT.uid + "__" + found.uid), {
+          from: CHAT.uid, to: found.uid, fromEmail: CHAT.email, toEmail: found.email,
+          fromIsAdmin: CHAT.admin, status: "pending", at: serverTimestamp(),
+        });
+        act.textContent = "Sent";
+      } catch (err) {
+        act.textContent = "Already sent";
+      }
+    });
+    row.append(em, act);
+    chatSearchResults.appendChild(row);
+  }
+
+  chatSearch.addEventListener("input", () => {
+    clearTimeout(CHAT.searchTimer);
+    const term = chatSearch.value.trim().toLowerCase();
+    if (!term) { chatSearchResults.hidden = true; return; }
+    CHAT.searchTimer = setTimeout(async () => {
+      if (!term.includes("@")) return renderSearch(null, "Search using a full email address.");
+      try {
+        const qs = await getDocs(query(collection(db, "directory"), where("email", "==", term), limit(1)));
+        if (qs.empty) return renderSearch(null, "Nobody here uses that email.");
+        const d = qs.docs[0];
+        if (d.id === CHAT.uid) return renderSearch(null, "That's you.");
+        renderSearch({ uid: d.id, email: d.data().email, isAdmin: d.data().isAdmin === true });
+      } catch (err) {
+        renderSearch(null, "Couldn't search right now.");
+      }
+    }, 300);
+  });
+
+  /* ------------------------------ wiring ------------------------------ */
+  chatFab.addEventListener("click", () => {
+    const open = chatPanel.classList.toggle("on");
+    chatRoot.classList.remove("dim");
+    if (open) { showChatList(); chatSearch.value = ""; chatSearchResults.hidden = true; }
+  });
+  $("chatClose").addEventListener("click", () => chatPanel.classList.remove("on"));
+  $("chatClose2").addEventListener("click", () => chatPanel.classList.remove("on"));
+  $("chatBack").addEventListener("click", showChatList);
+
+  chatReqFolder.addEventListener("click", () => { chatReqList.hidden = !chatReqList.hidden; });
+
+  chatAdminFolder.addEventListener("click", async () => {
+    if (!CHAT.admin) return;
+    if (CHAT.adminMode) { CHAT.adminMode = false; renderChatList(); return; }
+    try {
+      const qs = await getDocs(query(collection(db, "chats"), orderBy("lastAt", "desc"), limit(50)));
+      CHAT.adminChats = qs.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      CHAT.adminMode = true;
+      renderChatList();
+    } catch (err) {
+      CHAT.adminChats = [];
+      CHAT.adminMode = true;
+      renderChatList();
+    }
+  });
+
+  // In fullscreen only the fullscreen element renders, so the button has to move
+  // inside it — and there it hides until the pointer reaches that corner.
+  function placeChatRoot() {
+    const host = document.fullscreenElement || document.body;
+    if (chatRoot.parentElement !== host) host.appendChild(chatRoot);
+    chatRoot.classList.toggle("dim", !!document.fullscreenElement && !chatPanel.classList.contains("on"));
+  }
+  document.addEventListener("fullscreenchange", placeChatRoot);
+  addEventListener("pointermove", (e) => {
+    if (!document.fullscreenElement || chatPanel.classList.contains("on")) return;
+    const near = e.clientX > innerWidth - 170 && e.clientY > innerHeight - 170;
+    chatRoot.classList.toggle("dim", !near);
+  }, { passive: true });
 
   // Start with everything behind the gate unreachable.
   setBackgroundInert(true);
