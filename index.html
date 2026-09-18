@@ -2115,7 +2115,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.3";
+  const APP_VERSION = "2026.09.18.4";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2245,7 +2245,9 @@ body:has(.adm[open]) { overflow: hidden; }
   function startApprovalPause(kind) {
     clearTimeout(revealTimer);
     approvalKind = kind;
-    approvalRevealAt = Date.now() + 5000 + Math.random() * 5000;
+    // Signing up feels like being let in (5-10s); signing back in is quicker (2-5s).
+    approvalRevealAt = Date.now() + (kind === "signup" ? 5000 + Math.random() * 5000
+                                                       : 2000 + Math.random() * 3000);
   }
 
   function cancelApprovalPause() {
@@ -2276,7 +2278,8 @@ body:has(.adm[open]) { overflow: hidden; }
     progressFill.style.width = "0%";
     void progressFill.offsetWidth;
 
-    const steps = 4 + Math.floor(Math.random() * 4);
+    // Fewer segments over a short wait, so a 2s bar doesn't look frantic.
+    const steps = totalMs < 4000 ? 3 + Math.floor(Math.random() * 2) : 4 + Math.floor(Math.random() * 4);
     const slices = randomSplit(totalMs, steps);
     const jumps = randomSplit(100, steps);
     let at = 0, reached = 0;
@@ -2892,6 +2895,11 @@ body:has(.adm[open]) { overflow: hidden; }
       (qs) => {
         CHAT.chats = qs.docs.map((d) => Object.assign({ id: d.id }, d.data()))
           .sort((a, b) => asMillis(b.lastAt) - asMillis(a.lastAt));
+        // A message landing in the conversation already on screen counts as read.
+        if (CHAT.openId && !CHAT.readOnly) {
+          const open = CHAT.chats.find((c) => c.id === CHAT.openId);
+          if (open) markRead(open.id, asMillis(open.lastAt));
+        }
         renderChatList();
       }, () => {}));
 
@@ -3011,7 +3019,7 @@ body:has(.adm[open]) { overflow: hidden; }
     chatForm.hidden = !!readOnly;
     $("chatRename").hidden = !!readOnly || !!(chat.admins && chat.admins[otherOf(chat)]);
     chatMessagesEl.replaceChildren();
-    if (!readOnly) markRead(chat.id);
+    if (!readOnly) markRead(chat.id, asMillis(chat.lastAt));
 
     if (CHAT.stopMessages) CHAT.stopMessages();
     CHAT.stopMessages = onSnapshot(
@@ -3019,7 +3027,10 @@ body:has(.adm[open]) { overflow: hidden; }
       (qs) => {
         const msgs = qs.docs.map((d) => d.data()).reverse();
         renderMessages(msgs, readOnly, chat);
-        if (!readOnly) markRead(chat.id);
+        // Mark read against the newest message's own server time.
+        if (!readOnly) {
+          markRead(chat.id, msgs.reduce((max, m) => Math.max(max, asMillis(m.at)), 0));
+        }
       }, () => {});
   }
 
@@ -3048,9 +3059,14 @@ body:has(.adm[open]) { overflow: hidden; }
   }
 
   /* ------------------------------ actions ------------------------------ */
-  function markRead(chatId) {
+  // The marker is the message's OWN server timestamp, never this device's clock.
+  // Comparing a local clock against a server one left the dot stuck on for
+  // anyone whose device ran even slightly behind the server.
+  function markRead(chatId, atMillis) {
+    const at = atMillis || 0;
+    if (!at || (CHAT.prefs.reads[chatId] || 0) >= at) return;
     const reads = Object.assign({}, CHAT.prefs.reads);
-    reads[chatId] = Date.now();
+    reads[chatId] = at;
     CHAT.prefs.reads = reads;
     renderChatList();
     setDoc(doc(db, "prefs", CHAT.uid), { reads }, { merge: true }).catch(() => {});
