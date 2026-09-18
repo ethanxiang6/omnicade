@@ -1812,6 +1812,36 @@ body.entering > footer  { animation-delay: .13s; }
     { name: "Loom",                                          year: 1990, tag: "adventure",  url: "https://archive.org/embed/msdos_Loom_1990" },
     { name: "The Incredible Machine 2",                      year: 1994, tag: "puzzle",     url: "https://archive.org/embed/msdos_Incredible_Machine_2_The_1994" },
     { name: "Ghosts 'n Goblins",                             year: 1987, tag: "platformer", url: "https://archive.org/embed/msdos_Ghosts_N_Goblins_1987" },
+    { name: "Ultima IV: Quest of the Avatar",                 year: 1985, tag: "rpg",        url: "https://archive.org/embed/msdos_Ultima_IV_-_Quest_of_the_Avatar_1985" },
+    { name: "The Bard's Tale",                                year: 1987, tag: "rpg",        url: "https://archive.org/embed/msdos_The_Bards_Tale_1_-_Tales_Of_The_Unknown_1987" },
+    { name: "Wizardry: Proving Grounds of the Mad Overlord",  year: 1981, tag: "rpg",        url: "https://archive.org/embed/msdos_Wizardry_1_Proving_Grounds_Of_The_Mad_Overlord_1981_Sir_Tech" },
+    { name: "Curse of the Azure Bonds",                       year: 1989, tag: "rpg",        url: "https://archive.org/embed/msdos_Curse_of_the_Azure_Bonds_1989" },
+    { name: "Return to Zork",                                 year: 1993, tag: "adventure",  url: "https://archive.org/embed/msdos_Return_to_Zork" },
+    { name: "Neuromancer",                                    year: 1988, tag: "adventure",  url: "https://archive.org/embed/msdos_Neuromancer_1988" },
+    { name: "Hugo's House of Horrors",                        year: 1990, tag: "adventure",  url: "https://archive.org/embed/msdos_Hugos_House_of_Horrors_1990" },
+    { name: "Romance of the Three Kingdoms II",               year: 1990, tag: "strategy",   url: "https://archive.org/embed/msdos_Romance_of_the_Three_Kingdoms_II_1990" },
+    { name: "Seven Cities of Gold",                           year: 1993, tag: "strategy",   url: "https://archive.org/embed/msdos_Seven_Cities_of_Gold_Commemorative_Edition_1993" },
+    { name: "Fantasy Empires",                                year: 1993, tag: "strategy",   url: "https://archive.org/embed/msdos_Fantasy_Empires_1993" },
+    { name: "SimLife",                                        year: 1992, tag: "sim",        url: "https://archive.org/embed/msdos_SimLife_1992" },
+    { name: "MechWarrior",                                    year: 1989, tag: "sim",        url: "https://archive.org/embed/msdos_MechWarrior_1989" },
+    { name: "Chuck Yeager's Advanced Flight Trainer",         year: 1987, tag: "flight",     url: "https://archive.org/embed/msdos_Chuck_Yeagers_Advanced_Flight_Trainer_1987" },
+    { name: "Gunship 2000",                                   year: 1993, tag: "flight",     url: "https://archive.org/embed/msdos_Gunship_2000_CD-ROM_Edition_1993" },
+    { name: "LHX Attack Chopper",                             year: 1990, tag: "flight",     url: "https://archive.org/embed/msdos_LHX_Attack_Chopper_1990" },
+    { name: "Shuttle: The Space Flight Simulator",            year: 1992, tag: "space",      url: "https://archive.org/embed/msdos_Shuttle_The_Space_Flight_Simulator_1992" },
+    { name: "Test Drive",                                     year: 1987, tag: "racing",     url: "https://archive.org/embed/msdos_Test_Drive_1987" },
+    { name: "Turbo Out Run",                                  year: 1990, tag: "racing",     url: "https://archive.org/embed/msdos_Turbo_Out_Run_1990" },
+    { name: "The Cycles: Grand Prix Racing",                  year: 1989, tag: "racing",     url: "https://archive.org/embed/msdos_The_Cycles_-_International_Grand_Prix_Racing_1989" },
+    { name: "Street Rod 2",                                   year: 1991, tag: "racing",     url: "https://archive.org/embed/msdos_Street_Rod_2_The_Next_Generation_1991" },
+    { name: "Lakers versus Celtics",                          year: 1989, tag: "sports",     url: "https://archive.org/embed/msdos_Lakers_versus_Celtics_and_the_NBA_Playoffs_1989" },
+    { name: "Championship Baseball",                          year: 1986, tag: "sports",     url: "https://archive.org/embed/msdos_Championship_Baseball_1986" },
+    { name: "Super Tetris",                                   year: 1991, tag: "puzzle",     url: "https://archive.org/embed/msdos_Super_Tetris_1991" },
+    { name: "All New World of Lemmings",                      year: 1994, tag: "puzzle",     url: "https://archive.org/embed/msdos_Lemmings_3_-_All_New_World_of_Lemmings_1994" },
+    { name: "Dangerous Dave's Risky Rescue",                  year: 1993, tag: "platformer", url: "https://archive.org/embed/msdos_Dangerous_Daves_Risky_Rescue_1993" },
+    { name: "Trolls",                                         year: 1992, tag: "platformer", url: "https://archive.org/embed/msdos_Trolls_1992" },
+    { name: "Lucky Luke",                                     year: 1997, tag: "platformer", url: "https://archive.org/embed/msdos_Lucky_Luke_1997_1997" },
+    { name: "RoboCop",                                        year: 1989, tag: "action",     url: "https://archive.org/embed/msdos_RoboCop_1989" },
+    { name: "Jurassic Park",                                  year: 1993, tag: "action",     url: "https://archive.org/embed/msdos_Jurassic_Park_1993" },
+    { name: "Hoyle Official Book of Games",                   year: 1989, tag: "cards",      url: "https://archive.org/embed/msdos_Hoyle_Official_Book_of_Games_-_Volume_1_1989" },
   ];
 
   const PORTALS = [
@@ -2324,7 +2354,7 @@ body.entering > footer  { animation-delay: .13s; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.9";
+  const APP_VERSION = "2026.09.18.10";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
