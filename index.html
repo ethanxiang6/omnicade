@@ -1273,6 +1273,17 @@ body.entering > footer  { animation-delay: .13s; }
       <p class="gate-note">This takes a few seconds. You'll be let in automatically.</p>
     </div>
 
+    <!-- G. Daily limit reached — the database is refusing reads for now. -->
+    <div class="gate-view" id="gateBusy" hidden aria-live="polite">
+      <p class="eyebrow">Too busy right now</p>
+      <h2 class="gate-h">The site hit its daily limit.</h2>
+      <p class="gate-note" style="margin:0 0 1.4rem">
+        Accounts can't be checked until the limit resets, which happens once a day.
+        Try again tomorrow — nothing has been lost.
+      </p>
+      <button type="button" class="btn" id="gateBusyLogout">Log out</button>
+    </div>
+
     <!-- D. Denied -->
     <div class="gate-view" id="gateDenied" hidden aria-live="polite">
       <p class="eyebrow">Status · Denied</p>
@@ -1524,6 +1535,24 @@ body.entering > footer  { animation-delay: .13s; }
       <div class="chat-sheet-foot">
         <button type="button" class="btn" id="chatSheetCancel">Cancel</button>
         <button type="button" class="btn btn-primary" id="chatSheetOk">Save</button>
+      </div>
+    </div>
+
+    <!-- shown instead of the chat when the database is out of daily quota -->
+    <div id="chatLocked" hidden style="display:flex; flex-direction:column; flex:1; min-height:0">
+      <div class="chat-head"><span class="t">Chat closed</span>
+        <button type="button" class="chat-icon-btn" id="chatLockedClose" aria-label="Close messages">✕</button>
+      </div>
+      <div class="chat-scroll">
+        <p class="chat-sheet-note">
+          <strong>Chat is closed for today.</strong> The site reached the daily limit on its free
+          database, so messages can't be sent or loaded right now. It reopens tomorrow when the
+          limit resets, and nothing has been lost.
+        </p>
+        <p class="chat-sheet-note">The games all still work — only chat is affected.</p>
+      </div>
+      <div class="chat-sheet-foot">
+        <button type="button" class="btn" id="chatLockedRetry">Try again</button>
       </div>
     </div>
 
@@ -2272,6 +2301,7 @@ body.entering > footer  { animation-delay: .13s; }
   const views = {
     loading: $("gateLoading"), auth: $("gateAuth"), waiting: $("gateWaiting"),
     approving: $("gateApproving"), denied: $("gateDenied"), update: $("gateUpdate"),
+    busy: $("gateBusy"),
   };
   const progressFill = $("gateProgressFill"),
         approvingEyebrow = $("gateApprovingEyebrow"), approvingHead = $("gateApprovingHead");
@@ -2294,7 +2324,7 @@ body.entering > footer  { animation-delay: .13s; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.8";
+  const APP_VERSION = "2026.09.18.9";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2348,8 +2378,21 @@ body.entering > footer  { animation-delay: .13s; }
     errorEl.hidden = !message;
   }
 
+  // Firestore reports a spent daily quota as resource-exhausted. It's worth
+  // telling people apart from a real failure: nothing is broken, and it comes
+  // back on its own when the quota resets.
+  function isQuotaError(err) {
+    const code = String((err && err.code) || "").toLowerCase();
+    const text = String((err && err.message) || "").toLowerCase();
+    return code.includes("resource-exhausted") || code.includes("quota")
+        || text.includes("quota") || text.includes("resource exhausted");
+  }
+
   function describe(err) {
     const text = (err && err.message) || "";
+    if (isQuotaError(err)) {
+      return "The site hit its daily limit. This comes back tomorrow — nothing has been lost.";
+    }
     if (/has not been used|is disabled|database .* does not exist/i.test(text)) {
       return "The account database isn't set up on the server yet. The site owner needs to create the Firestore database.";
     }
@@ -2550,6 +2593,14 @@ body.entering > footer  { animation-delay: .13s; }
         showView("waiting");
       }
     }, (err) => {
+      // Out of quota isn't a reason to sign anyone out — they'd just be unable
+      // to sign back in. Hold them at the gate with an explanation instead.
+      if (isQuotaError(err)) {
+        cancelApprovalPause();
+        lockGate();
+        showView("busy");
+        return;
+      }
       setError(describe(err));
       signOut(auth);
     });
@@ -2574,6 +2625,7 @@ body.entering > footer  { animation-delay: .13s; }
         return;
       }
     } catch (err) {
+      if (isQuotaError(err)) { cancelApprovalPause(); lockGate(); showView("busy"); return; }
       setError(describe(err));
       signOut(auth);
       return;
@@ -2738,6 +2790,7 @@ body.entering > footer  { animation-delay: .13s; }
     signOut(auth);
   }
   navLogout.addEventListener("click", logOut);
+  $("gateBusyLogout").addEventListener("click", logOut);
   $("gateWaitingLogout").addEventListener("click", logOut);
   $("gateDeniedLogout").addEventListener("click", logOut);
 
@@ -3040,7 +3093,7 @@ body.entering > footer  { animation-delay: .13s; }
     uid: null, email: "", admin: false,
     chats: [], requests: [], adminChats: [], people: [], prefs: { nicknames: {}, reads: {} },
     openId: null, openChat: null, readOnly: false, adminMode: false,
-    blocks: [], messages: [],
+    blocks: [], messages: [], locked: false,
     stops: [], stopMessages: null, stopBlocks: null,
   };
 
@@ -3093,7 +3146,7 @@ body.entering > footer  { animation-delay: .13s; }
       CHAT.prefs = { nicknames: d.nicknames || {}, reads: d.reads || {} };
       renderChatList();
       if (CHAT.openChat && !CHAT.readOnly) chatConvoName.textContent = nameFor(CHAT.openChat);
-    }, () => {}));
+    }, (err) => chatFail(err)));
 
     CHAT.stops.push(onSnapshot(
       query(collection(db, "chats"), where("members", "array-contains", uid), limit(100)),
@@ -3106,14 +3159,14 @@ body.entering > footer  { animation-delay: .13s; }
           if (open) markRead(open.id, asMillis(open.lastAt));
         }
         renderChatList();
-      }, () => {}));
+      }, (err) => chatFail(err)));
 
     CHAT.stops.push(onSnapshot(
       query(collection(db, "friendRequests"), where("to", "==", uid), where("status", "==", "pending")),
       (qs) => {
         CHAT.requests = qs.docs.map((d) => Object.assign({ id: d.id }, d.data()));
         renderRequests();
-      }, () => {}));
+      }, (err) => chatFail(err)));
   }
 
   function chatStop() {
@@ -3138,6 +3191,48 @@ body.entering > footer  { animation-delay: .13s; }
     const n = CHAT.chats.filter(isUnread).length + CHAT.requests.length;
     document.title = n ? "(" + n + ") " + BASE_TITLE : BASE_TITLE;
   }
+
+  /* --------------------------- daily limit --------------------------- */
+  // Every Firestore call in the chat routes its failure through here, so one
+  // spent quota closes the whole thing politely instead of failing silently
+  // in a dozen places.
+  function chatFail(err) {
+    if (!isQuotaError(err)) return false;
+    setChatLocked(true);
+    return true;
+  }
+
+  function setChatLocked(on) {
+    if (CHAT.locked === on) return;
+    CHAT.locked = on;
+    $("chatLocked").hidden = !on;
+    if (on) {
+      chatListView.hidden = true;
+      chatConvo.hidden = true;
+      $("chatSheet").hidden = true;
+      chatDot.hidden = true;
+      document.title = BASE_TITLE;
+    } else if (chatPanel.classList.contains("on")) {
+      showChatList();
+    }
+  }
+
+  $("chatLockedClose").addEventListener("click", () => chatPanel.classList.remove("on"));
+  $("chatLockedRetry").addEventListener("click", async () => {
+    const btn = $("chatLockedRetry");
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    try {
+      await getDocs(query(collection(db, "directory"), limit(1)));
+      setChatLocked(false);
+      if (CHAT.uid) chatStart(CHAT.uid, CHAT.email, CHAT.admin);
+    } catch (err) {
+      toast(isQuotaError(err) ? "Still closed — try again tomorrow." : "Couldn't reach the database.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Try again";
+    }
+  });
 
   /* ------------------------- sheets and toasts ------------------------- */
   // Renaming, group setup and confirmations all happen inside the panel.
@@ -3311,7 +3406,7 @@ body.entering > footer  { animation-delay: .13s; }
     CHAT.stopBlocks = onSnapshot(collection(db, "chats", chat.id, "blocks"), (qs) => {
       CHAT.blocks = qs.docs.map((d) => d.id);
       renderBlockState();
-    }, () => {});
+    }, (err) => chatFail(err));
 
     if (CHAT.stopMessages) CHAT.stopMessages();
     CHAT.stopMessages = onSnapshot(
@@ -3324,7 +3419,7 @@ body.entering > footer  { animation-delay: .13s; }
         if (!readOnly) {
           markRead(chat.id, msgs.reduce((max, m) => Math.max(max, asMillis(m.at)), 0));
         }
-      }, () => {});
+      }, (err) => chatFail(err));
   }
 
   function renderMessages(msgs, readOnly, chat) {
@@ -3398,7 +3493,7 @@ body.entering > footer  { animation-delay: .13s; }
           // Keep the list preview honest when the newest message changes.
           if (isLast) await setDoc(doc(db, "chats", chatId), { lastText: text }, { merge: true });
         } catch (err) {
-          toast("Couldn't edit that message.");
+          if (!chatFail(err)) toast("Couldn't edit that message.");
         }
       },
     });
@@ -3419,7 +3514,7 @@ body.entering > footer  { animation-delay: .13s; }
             }, { merge: true });
           }
         } catch (err) {
-          toast("Couldn't delete that message.");
+          if (!chatFail(err)) toast("Couldn't delete that message.");
         }
       },
     });
@@ -3450,7 +3545,7 @@ body.entering > footer  { animation-delay: .13s; }
     const ref = doc(db, "chats", CHAT.openId, "blocks", CHAT.uid);
 
     if (CHAT.blocks.includes(CHAT.uid)) {
-      try { await deleteDoc(ref); } catch (err) { toast("Couldn't unblock just now."); }
+      try { await deleteDoc(ref); } catch (err) { if (!chatFail(err)) toast("Couldn't unblock just now."); }
       return;
     }
     openSheet({
@@ -3459,7 +3554,7 @@ body.entering > footer  { animation-delay: .13s; }
       onOk: async () => {
         closeSheet();
         try { await setDoc(ref, { at: serverTimestamp() }); }
-        catch (err) { toast("Couldn't block just now."); }
+        catch (err) { if (!chatFail(err)) toast("Couldn't block just now."); }
       },
     });
   }
@@ -3477,7 +3572,7 @@ body.entering > footer  { animation-delay: .13s; }
     reads[chatId] = at;
     CHAT.prefs.reads = reads;
     renderChatList();
-    setDoc(doc(db, "prefs", CHAT.uid), { reads }, { merge: true }).catch(() => {});
+    setDoc(doc(db, "prefs", CHAT.uid), { reads }, { merge: true }).catch(chatFail);
   }
 
   async function createChat(otherUid, otherEmail, otherIsAdmin) {
@@ -3501,6 +3596,7 @@ body.entering > footer  { animation-delay: .13s; }
       await updateDoc(doc(db, "friendRequests", req.id), { status: accept ? "accepted" : "denied" });
       if (accept) await createChat(req.from, req.fromEmail, req.fromIsAdmin);
     } catch (err) {
+      if (chatFail(err)) return;
       yesBtn.disabled = noBtn.disabled = false;
       noBtn.textContent = "Failed";
       setTimeout(() => { noBtn.textContent = "Deny"; }, 2000);
@@ -3523,6 +3619,7 @@ body.entering > footer  { animation-delay: .13s; }
       await batch.commit();
     } catch (err) {
       chatInput.value = text;
+      if (!chatFail(err)) toast("That message didn't send.");
     }
   });
 
@@ -3543,7 +3640,7 @@ body.entering > footer  { animation-delay: .13s; }
             await setDoc(doc(db, "chats", chat.id), { name }, { merge: true });
             chatConvoName.textContent = name || nameFor(chat);
           } catch (err) {
-            toast("Couldn't rename this group.");
+            if (!chatFail(err)) toast("Couldn't rename this group.");
           }
         },
       });
@@ -3629,7 +3726,7 @@ body.entering > footer  { animation-delay: .13s; }
       const snap = await getDoc(ref);
       openChat(Object.assign({ id: ref.id }, snap.data()));
     } catch (err) {
-      toast("Couldn't create that group.");
+      if (!chatFail(err)) toast("Couldn't create that group.");
     }
   }
 
@@ -3678,7 +3775,7 @@ body.entering > footer  { animation-delay: .13s; }
           await updateDoc(doc(db, "chats", chat.id), { members });
           showChatList();
         } catch (err) {
-          toast("Couldn't leave just now.");
+          if (!chatFail(err)) toast("Couldn't leave just now.");
         }
       },
     });
@@ -3726,7 +3823,7 @@ body.entering > footer  { animation-delay: .13s; }
         try {
           for (const uid of picked) await addMember(chat.id, uid);
         } catch (err) {
-          toast("Couldn't add everyone — you can only add your own friends.");
+          if (!chatFail(err)) toast("Couldn't add everyone — you can only add your own friends.");
         }
       },
     });
@@ -3744,6 +3841,7 @@ body.entering > footer  { animation-delay: .13s; }
         uid: d.id, email: d.data().email || "", isAdmin: d.data().isAdmin === true,
       }));
     } catch (err) {
+      chatFail(err);
       CHAT.people = [];
     }
   }
@@ -3788,6 +3886,7 @@ body.entering > footer  { animation-delay: .13s; }
         });
         act.textContent = "Sent";
       } catch (err) {
+        if (chatFail(err)) return;
         act.textContent = "Already sent";
       }
     });
@@ -3843,6 +3942,7 @@ body.entering > footer  { animation-delay: .13s; }
       CHAT.adminMode = true;
       renderChatList();
     } catch (err) {
+      chatFail(err);
       CHAT.adminChats = [];
       CHAT.adminMode = true;
       renderChatList();
