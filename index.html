@@ -2362,7 +2362,7 @@ body.entering > footer  { animation-delay: .13s; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.11";
+  const APP_VERSION = "2026.09.18.12";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -3132,10 +3132,15 @@ body.entering > footer  { animation-delay: .13s; }
     chats: [], requests: [], adminChats: [], people: [], peopleAt: 0,
     prefs: { nicknames: {}, reads: {} },
     openId: null, openChat: null, readOnly: false, adminMode: false,
+    adminAt: 0,
     blocks: [], messages: [], msgLimit: 0, moreMessages: false, keepAnchor: false,
     locked: false,
     stops: [], stopMessages: null, stopBlocks: null,
   };
+
+  // Declared up here with the rest of the chat's state because chatStop() below
+  // flushes it, and chatStop runs from the auth callbacks.
+  let readTimer = null;
 
   const BASE_TITLE = document.title;
 
@@ -3211,6 +3216,9 @@ body.entering > footer  { animation-delay: .13s; }
   }
 
   function chatStop() {
+    // Any read marker still waiting on its timer goes now, while this account
+    // is still the signed-in one.
+    if (readTimer) flushReads();
     CHAT.stops.forEach((fn) => { try { fn(); } catch (e) {} });
     CHAT.stops = [];
     if (CHAT.stopMessages) { CHAT.stopMessages(); CHAT.stopMessages = null; }
@@ -3219,7 +3227,7 @@ body.entering > footer  { animation-delay: .13s; }
       uid: null, email: "", admin: false, chats: [], requests: [], adminChats: [],
       people: [], peopleAt: 0,
       prefs: { nicknames: {}, reads: {} }, openId: null, openChat: null,
-      readOnly: false, adminMode: false, blocks: [], messages: [],
+      readOnly: false, adminMode: false, adminAt: 0, blocks: [], messages: [],
       msgLimit: 0, moreMessages: false, keepAnchor: false,
     });
     chatRoot.classList.remove("on");
@@ -3654,8 +3662,31 @@ body.entering > footer  { animation-delay: .13s; }
     reads[chatId] = at;
     CHAT.prefs.reads = reads;
     renderChatList();
-    setDoc(doc(db, "prefs", CHAT.uid), { reads }, { merge: true }).catch(chatFail);
+    queueReadWrite();
   }
+
+  // Each of these writes comes back through this account's own prefs listener
+  // as a read, so a run of messages in an open chat was billed twice over. The
+  // marker on screen is already correct above; only the trip to the server
+  // waits, and it sends the latest state of the whole map when it goes.
+  const READ_FLUSH = 2000;
+
+  function queueReadWrite() {
+    if (readTimer) return;
+    readTimer = setTimeout(flushReads, READ_FLUSH);
+  }
+
+  function flushReads() {
+    if (readTimer) { clearTimeout(readTimer); readTimer = null; }
+    if (!CHAT.uid) return;
+    setDoc(doc(db, "prefs", CHAT.uid), { reads: CHAT.prefs.reads }, { merge: true }).catch(chatFail);
+  }
+
+  // Don't let a queued marker die with the page.
+  addEventListener("pagehide", () => { if (readTimer) flushReads(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && readTimer) flushReads();
+  });
 
   async function createChat(otherUid, otherEmail, otherIsAdmin) {
     const id = chatIdFor(CHAT.uid, otherUid);
@@ -4019,29 +4050,48 @@ body.entering > footer  { animation-delay: .13s; }
   });
 
   /* ------------------------------ wiring ------------------------------ */
+  // Closing the panel drops the open conversation's listeners. Reopening always
+  // lands on the list anyway, so there is nothing to come back to — and a
+  // message arriving while the panel is shut no longer marks itself read,
+  // which used to swallow the unread dot.
+  function closePanel() {
+    chatPanel.classList.remove("on");
+    showChatList();
+    if (readTimer) flushReads();
+  }
+
   chatFab.addEventListener("click", () => {
     const open = chatPanel.classList.toggle("on");
     chatRoot.classList.remove("dim");
     if (open) { showChatList(); chatSearch.value = ""; chatSearchResults.hidden = true; }
+    else closePanel();
   });
-  $("chatClose").addEventListener("click", () => chatPanel.classList.remove("on"));
-  $("chatClose2").addEventListener("click", () => chatPanel.classList.remove("on"));
+  $("chatClose").addEventListener("click", closePanel);
+  $("chatClose2").addEventListener("click", closePanel);
   $("chatBack").addEventListener("click", showChatList);
 
   chatReqFolder.addEventListener("click", () => { chatReqList.hidden = !chatReqList.hidden; });
 
+  const ADMIN_TTL = 60 * 1000;
+
   chatAdminFolder.addEventListener("click", async () => {
     if (!CHAT.admin) return;
     if (CHAT.adminMode) { CHAT.adminMode = false; renderChatList(); return; }
+    CHAT.adminMode = true;
+
+    // Fifty reads every time this folder was opened. The listing goes stale by
+    // a minute at worst, and opening any chat from it still reads it live.
+    if (CHAT.adminAt && Date.now() - CHAT.adminAt < ADMIN_TTL) return renderChatList();
+
     try {
       const qs = await getDocs(query(collection(db, "chats"), orderBy("lastAt", "desc"), limit(50)));
       CHAT.adminChats = qs.docs.map((d) => Object.assign({ id: d.id }, d.data()));
-      CHAT.adminMode = true;
+      CHAT.adminAt = Date.now();
       renderChatList();
     } catch (err) {
       chatFail(err);
       CHAT.adminChats = [];
-      CHAT.adminMode = true;
+      CHAT.adminAt = 0;
       renderChatList();
     }
   });
