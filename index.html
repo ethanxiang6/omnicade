@@ -896,9 +896,55 @@ body:has(.adm[open]) { overflow: hidden; }
 }
 .chat-icon-btn:hover { color: var(--bone); }
 
-.chat-searchbar { flex: none; padding: .6rem .7rem; border-bottom: 1px solid var(--line); }
+.chat-searchbar {
+  display: flex; align-items: center; gap: .5rem; flex: none;
+  padding: .6rem .7rem; border-bottom: 1px solid var(--line);
+}
+.chat-plus {
+  flex: none; width: 34px; height: 34px; border-radius: 2px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--ink-3); color: var(--phosphor);
+  font-size: 1.15rem; line-height: 1;
+}
+.chat-plus:hover { border-color: var(--phosphor-d); background: var(--ink); }
+
+.chat-sheet-foot {
+  display: flex; justify-content: flex-end; gap: .5rem; flex: none;
+  padding: .6rem; border-top: 1px solid var(--line);
+}
+.chat-sheet-foot .btn { padding: .5rem .85rem; font-size: .68rem; }
+.chat-sheet-field { padding: .75rem .9rem; border-bottom: 1px solid var(--line); }
+.chat-sheet-field input, .chat-sheet-field textarea {
+  width: 100%; padding: .55rem .65rem; border-radius: 2px; outline: none; resize: vertical;
+  background: var(--ink); border: 1px solid var(--line); color: var(--bone);
+  font-family: var(--f-mono); font-size: .76rem;
+}
+.chat-sheet-field input:focus, .chat-sheet-field textarea:focus { border-color: var(--phosphor-d); }
+.chat-sheet-note {
+  margin: 0; padding: .9rem; font-family: var(--f-mono);
+  font-size: .7rem; line-height: 1.65; color: var(--slate);
+}
+.chat-pick, .chat-member {
+  display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left;
+  padding: .65rem .9rem; border: 0; border-bottom: 1px solid var(--line); background: none;
+  font-family: var(--f-mono); font-size: .73rem; color: var(--bone);
+}
+.chat-pick { cursor: pointer; }
+.chat-pick:hover { background: var(--ink-3); }
+.chat-pick input { accent-color: var(--phosphor); flex: none; }
+.chat-member .tag {
+  margin-left: auto; flex: none; font-size: .6rem; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--slate);
+}
+
+.chat-toast {
+  position: absolute; left: .7rem; right: .7rem; bottom: .7rem; z-index: 3; margin: 0;
+  padding: .55rem .7rem; border-radius: 2px; background: var(--rust); color: #1A0A07;
+  font-family: var(--f-mono); font-size: .68rem; line-height: 1.5;
+}
+.chat-toast[hidden] { display: none; }
+
 .chat-searchbar input {
-  width: 100%; padding: .5rem .65rem; border-radius: 2px; outline: none;
+  flex: 1; min-width: 0; padding: .5rem .65rem; border-radius: 2px; outline: none;
   background: var(--ink); border: 1px solid var(--line); color: var(--bone);
   font-family: var(--f-mono); font-size: .74rem;
 }
@@ -1349,6 +1395,8 @@ body:has(.adm[open]) { overflow: hidden; }
       <div class="chat-searchbar">
         <input id="chatSearch" type="search" autocomplete="off" spellcheck="false"
                placeholder="Find someone by email…" aria-label="Search people by email">
+        <button type="button" class="chat-plus" id="chatNewGroup" title="New group chat"
+                aria-label="New group chat">+</button>
       </div>
       <div class="chat-scroll">
         <div id="chatSearchResults" hidden></div>
@@ -1369,6 +1417,7 @@ body:has(.adm[open]) { overflow: hidden; }
       <div class="chat-head">
         <button type="button" class="chat-icon-btn" id="chatBack" aria-label="Back to all chats">‹</button>
         <span class="t" id="chatConvoName"></span>
+        <button type="button" class="chat-icon-btn" id="chatPeople" title="People in this group" hidden>👥</button>
         <button type="button" class="chat-icon-btn" id="chatRename" title="Rename this person (only you see it)">✎</button>
         <button type="button" class="chat-icon-btn" id="chatBlock" title="Block this chat">⊘</button>
         <button type="button" class="chat-icon-btn" id="chatClose2" aria-label="Close messages">✕</button>
@@ -1383,6 +1432,21 @@ body:has(.adm[open]) { overflow: hidden; }
         <button type="submit" class="btn btn-primary">Send</button>
       </form>
     </div>
+
+    <!-- in-panel sheet: groups, renaming, confirmations — no browser popups -->
+    <div id="chatSheet" hidden style="display:flex; flex-direction:column; flex:1; min-height:0">
+      <div class="chat-head">
+        <button type="button" class="chat-icon-btn" id="chatSheetBack" aria-label="Back">‹</button>
+        <span class="t" id="chatSheetTitle"></span>
+      </div>
+      <div class="chat-scroll" id="chatSheetBody"></div>
+      <div class="chat-sheet-foot">
+        <button type="button" class="btn" id="chatSheetCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="chatSheetOk">Save</button>
+      </div>
+    </div>
+
+    <p class="chat-toast" id="chatToast" hidden></p>
   </div>
 
   <button type="button" id="chatFab" aria-label="Messages">
@@ -2138,7 +2202,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.5";
+  const APP_VERSION = "2026.09.18.6";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2881,16 +2945,27 @@ body:has(.adm[open]) { overflow: hidden; }
   const chatIdFor = (a, b) => [a, b].sort().join("__");
   const asMillis = (v) => (v && typeof v.toMillis === "function" ? v.toMillis() : 0);
   const otherOf = (chat) => (chat.members || []).find((m) => m !== CHAT.uid) || "";
+  const isGroup = (chat) => chat.type === "group" || (chat.members || []).length > 2;
+
+  // What one person is called: an admin is always "Admin", otherwise your own
+  // private nickname if you set one, otherwise their email.
+  function personName(chat, uid) {
+    if (chat.admins && chat.admins[uid]) return "Admin";
+    return CHAT.prefs.nicknames[uid] || (chat.emails && chat.emails[uid]) || "Someone";
+  }
 
   function nameFor(chat, forAdminView) {
     if (forAdminView) {
       const es = chat.emails || {};
-      return (chat.members || []).map((m) => (chat.admins && chat.admins[m] ? "Admin" : es[m] || "?")).join("  ↔  ");
+      const who = (chat.members || []).map((m) => (chat.admins && chat.admins[m] ? "Admin" : es[m] || "?"));
+      if (isGroup(chat)) return (chat.name || "Group") + " · " + who.join(", ");
+      return who.join("  ↔  ");
     }
-    const other = otherOf(chat);
-    // An admin is always "Admin" — that name can't be overridden by a nickname.
-    if (chat.admins && chat.admins[other]) return "Admin";
-    return CHAT.prefs.nicknames[other] || (chat.emails && chat.emails[other]) || "Someone";
+    if (isGroup(chat)) {
+      const others = (chat.members || []).filter((m) => m !== CHAT.uid);
+      return chat.name || ("Group · " + (others.length + 1) + " people");
+    }
+    return personName(chat, otherOf(chat));
   }
 
   const isUnread = (chat) =>
@@ -2958,6 +3033,64 @@ body:has(.adm[open]) { overflow: hidden; }
   function updateTitleBadge() {
     const n = CHAT.chats.filter(isUnread).length + CHAT.requests.length;
     document.title = n ? "(" + n + ") " + BASE_TITLE : BASE_TITLE;
+  }
+
+  /* ------------------------- sheets and toasts ------------------------- */
+  // Renaming, group setup and confirmations all happen inside the panel.
+  // Browser prompt()/confirm() boxes are jarring over a game, and on some
+  // phones they don't appear at all.
+  let toastTimer = 0;
+  function toast(text) {
+    const el = $("chatToast");
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+  }
+
+  function openSheet(opts) {
+    CHAT.sheetReturn = chatConvo.hidden ? "list" : "convo";
+    $("chatSheetTitle").textContent = opts.title;
+    $("chatSheetBody").replaceChildren(opts.body);
+    const ok = $("chatSheetOk");
+    ok.textContent = opts.okLabel || "Save";
+    ok.hidden = !opts.onOk;
+    ok.className = opts.danger ? "btn" : "btn btn-primary";
+    ok.onclick = () => { if (opts.onOk) opts.onOk(); };
+    $("chatSheetCancel").textContent = opts.cancelLabel || "Cancel";
+    chatListView.hidden = true;
+    chatConvo.hidden = true;
+    $("chatSheet").hidden = false;
+    if (opts.focus) requestAnimationFrame(() => opts.focus.focus());
+  }
+
+  function closeSheet() {
+    $("chatSheet").hidden = true;
+    if (CHAT.sheetReturn === "convo" && CHAT.openId) chatConvo.hidden = false;
+    else chatListView.hidden = false;
+  }
+  $("chatSheetCancel").addEventListener("click", closeSheet);
+  $("chatSheetBack").addEventListener("click", closeSheet);
+
+  function sheetField(labelText, value, multiline, maxLength) {
+    const wrap = document.createElement("div");
+    wrap.className = "chat-sheet-field";
+    const input = document.createElement(multiline ? "textarea" : "input");
+    if (multiline) input.rows = 3;
+    input.value = value || "";
+    input.maxLength = maxLength || 60;
+    input.setAttribute("aria-label", labelText);
+    input.placeholder = labelText;
+    wrap.appendChild(input);
+    wrap.input = input;
+    return wrap;
+  }
+
+  function sheetNote(text) {
+    const p = document.createElement("p");
+    p.className = "chat-sheet-note";
+    p.textContent = text;
+    return p;
   }
 
   /* ------------------------------ views ------------------------------ */
@@ -3058,7 +3191,11 @@ body:has(.adm[open]) { overflow: hidden; }
     chatConvo.hidden = false;
     chatConvoName.textContent = nameFor(chat, readOnly);
     chatForm.hidden = !!readOnly;
-    $("chatRename").hidden = !!readOnly || !!(chat.admins && chat.admins[otherOf(chat)]);
+    const group = isGroup(chat);
+    $("chatPeople").hidden = !!readOnly || !group;
+    $("chatRename").hidden = !!readOnly || (!group && !!(chat.admins && chat.admins[otherOf(chat)]));
+    $("chatRename").title = group ? "Rename this group — everyone sees it"
+                                  : "Rename this person — only you see it";
     chatMessagesEl.replaceChildren();
     if (!readOnly) markRead(chat.id, asMillis(chat.lastAt));
 
@@ -3091,10 +3228,13 @@ body:has(.adm[open]) { overflow: hidden; }
     msgs.forEach((m, i) => {
       const el = document.createElement("div");
       el.className = "chat-msg" + (m.from === CHAT.uid && !readOnly ? " mine" : "");
-      if (readOnly) {
+      // In a group you need to know who said it; in a DM it's obvious.
+      if (readOnly || (isGroup(chat) && m.from !== CHAT.uid)) {
         const who = document.createElement("span");
         who.className = "sender";
-        who.textContent = (chat.admins && chat.admins[m.from]) ? "Admin" : ((chat.emails || {})[m.from] || "?");
+        who.textContent = readOnly
+          ? ((chat.admins && chat.admins[m.from]) ? "Admin" : ((chat.emails || {})[m.from] || "?"))
+          : personName(chat, m.from);
         el.appendChild(who);
       }
       el.appendChild(document.createTextNode(m.text || ""));
@@ -3141,35 +3281,44 @@ body:has(.adm[open]) { overflow: hidden; }
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
-  async function editMessage(chatId, m, isLast) {
-    const next = prompt("Edit this message:", m.text || "");
-    if (next === null) return;
-    const text = next.trim().slice(0, 2000);
-    if (!text || text === m.text) return;
-    try {
-      await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text, editedAt: serverTimestamp() });
-      // Keep the list preview honest when the newest message changes.
-      if (isLast) {
-        await setDoc(doc(db, "chats", chatId), { lastText: text }, { merge: true });
-      }
-    } catch (err) {
-      alert("Couldn't edit that message.");
-    }
+  function editMessage(chatId, m, isLast) {
+    const field = sheetField("Message", m.text || "", true, 2000);
+    openSheet({
+      title: "Edit message", okLabel: "Save", focus: field.input, body: field,
+      onOk: async () => {
+        const text = field.input.value.trim().slice(0, 2000);
+        if (!text || text === m.text) return closeSheet();
+        closeSheet();
+        try {
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text, editedAt: serverTimestamp() });
+          // Keep the list preview honest when the newest message changes.
+          if (isLast) await setDoc(doc(db, "chats", chatId), { lastText: text }, { merge: true });
+        } catch (err) {
+          toast("Couldn't edit that message.");
+        }
+      },
+    });
   }
 
-  async function deleteMessage(chatId, m, isLast, previous) {
-    if (!confirm("Delete this message? It can't be brought back.")) return;
-    try {
-      await deleteDoc(doc(db, "chats", chatId, "messages", m.id));
-      if (isLast) {
-        await setDoc(doc(db, "chats", chatId), {
-          lastText: previous ? previous.text : "",
-          lastFrom: previous ? previous.from : "",
-        }, { merge: true });
-      }
-    } catch (err) {
-      alert("Couldn't delete that message.");
-    }
+  function deleteMessage(chatId, m, isLast, previous) {
+    openSheet({
+      title: "Delete message", okLabel: "Delete", cancelLabel: "Keep", danger: true,
+      body: sheetNote("This message will be removed for everyone in the chat. It can't be brought back."),
+      onOk: async () => {
+        closeSheet();
+        try {
+          await deleteDoc(doc(db, "chats", chatId, "messages", m.id));
+          if (isLast) {
+            await setDoc(doc(db, "chats", chatId), {
+              lastText: previous ? previous.text : "",
+              lastFrom: previous ? previous.from : "",
+            }, { merge: true });
+          }
+        } catch (err) {
+          toast("Couldn't delete that message.");
+        }
+      },
+    });
   }
 
   /* ------------------------------ actions ------------------------------ */
@@ -3180,7 +3329,8 @@ body:has(.adm[open]) { overflow: hidden; }
     const theyBlocked = CHAT.blocks.some((uid) => uid !== CHAT.uid);
     const blocked = iBlocked || theyBlocked;
 
-    blockBtn.hidden = CHAT.readOnly || !CHAT.openChat;
+    // Blocking is for one-to-one chats; you leave a group instead.
+    blockBtn.hidden = CHAT.readOnly || !CHAT.openChat || isGroup(CHAT.openChat);
     blockBtn.title = iBlocked ? "Unblock this chat" : "Block this chat";
     chatForm.hidden = CHAT.readOnly || blocked;
     bar.hidden = CHAT.readOnly || !blocked;
@@ -3194,14 +3344,20 @@ body:has(.adm[open]) { overflow: hidden; }
   async function toggleBlock() {
     if (!CHAT.openId || CHAT.readOnly) return;
     const ref = doc(db, "chats", CHAT.openId, "blocks", CHAT.uid);
-    try {
-      if (CHAT.blocks.includes(CHAT.uid)) await deleteDoc(ref);
-      else if (confirm("Block this chat? Neither of you can send messages until you unblock it.")) {
-        await setDoc(ref, { at: serverTimestamp() });
-      }
-    } catch (err) {
-      alert("Couldn't change that just now.");
+
+    if (CHAT.blocks.includes(CHAT.uid)) {
+      try { await deleteDoc(ref); } catch (err) { toast("Couldn't unblock just now."); }
+      return;
     }
+    openSheet({
+      title: "Block this chat", okLabel: "Block", cancelLabel: "Cancel", danger: true,
+      body: sheetNote("Neither of you can send messages until you unblock it. The other person isn't told. Your messages stay where they are."),
+      onOk: async () => {
+        closeSheet();
+        try { await setDoc(ref, { at: serverTimestamp() }); }
+        catch (err) { toast("Couldn't block just now."); }
+      },
+    });
   }
 
   $("chatBlock").addEventListener("click", toggleBlock);
@@ -3269,17 +3425,207 @@ body:has(.adm[open]) { overflow: hidden; }
   $("chatRename").addEventListener("click", () => {
     const chat = CHAT.openChat;
     if (!chat || CHAT.readOnly) return;
+
+    // A group's name is shared with everyone in it; a nickname for one person
+    // is yours alone.
+    if (isGroup(chat)) {
+      const field = sheetField("Group name", chat.name || "", false, 60);
+      openSheet({
+        title: "Rename group", focus: field.input, body: field,
+        onOk: async () => {
+          const name = field.input.value.trim().slice(0, 60);
+          closeSheet();
+          try {
+            await setDoc(doc(db, "chats", chat.id), { name }, { merge: true });
+            chatConvoName.textContent = name || nameFor(chat);
+          } catch (err) {
+            toast("Couldn't rename this group.");
+          }
+        },
+      });
+      return;
+    }
+
     const other = otherOf(chat);
     if (chat.admins && chat.admins[other]) return;
-    const current = CHAT.prefs.nicknames[other] || "";
-    const next = prompt("Name for this person — only you ever see it:", current);
-    if (next === null) return;
-    const nicknames = Object.assign({}, CHAT.prefs.nicknames);
-    nicknames[other] = next.trim().slice(0, 40);
-    CHAT.prefs.nicknames = nicknames;
-    chatConvoName.textContent = nameFor(chat);
-    renderChatList();
-    setDoc(doc(db, "prefs", CHAT.uid), { nicknames }, { merge: true }).catch(() => {});
+    const field = sheetField("Name", CHAT.prefs.nicknames[other] || "", false, 40);
+    openSheet({
+      title: "Rename person", focus: field.input,
+      body: (() => {
+        const box = document.createElement("div");
+        box.append(field, sheetNote("Only you ever see this name. They aren't told, and admins can't see it either."));
+        return box;
+      })(),
+      onOk: () => {
+        const nicknames = Object.assign({}, CHAT.prefs.nicknames);
+        nicknames[other] = field.input.value.trim().slice(0, 40);
+        CHAT.prefs.nicknames = nicknames;
+        closeSheet();
+        chatConvoName.textContent = nameFor(chat);
+        renderChatList();
+        setDoc(doc(db, "prefs", CHAT.uid), { nicknames }, { merge: true })
+          .catch(() => toast("Couldn't save that name."));
+      },
+    });
+  });
+
+  /* ------------------------------ groups ------------------------------ */
+  // You can only group with people you're already friends with — a DM between
+  // you two is the proof of that, and the rules check it again on the server.
+  function friendsList() {
+    return CHAT.chats
+      .filter((c) => !isGroup(c) && (c.members || []).length === 2)
+      .map((c) => {
+        const uid = otherOf(c);
+        return {
+          uid, email: (c.emails || {})[uid] || "",
+          isAdmin: !!(c.admins && c.admins[uid]), name: personName(c, uid),
+        };
+      })
+      .filter((f) => f.uid && (CHAT.admin || !f.isAdmin))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function pickerList(people, emptyText) {
+    const box = document.createElement("div");
+    if (!people.length) {
+      box.appendChild(sheetNote(emptyText));
+      box.selected = () => [];
+      return box;
+    }
+    const chosen = new Set();
+    people.forEach((p) => {
+      const row = document.createElement("label");
+      row.className = "chat-pick";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.addEventListener("change", () => { if (cb.checked) chosen.add(p.uid); else chosen.delete(p.uid); });
+      const span = document.createElement("span");
+      span.textContent = p.name && p.name !== p.email ? p.name + " · " + p.email : p.email;
+      row.append(cb, span);
+      box.appendChild(row);
+    });
+    box.selected = () => Array.from(chosen);
+    return box;
+  }
+
+  // Created with just you, then each person added one at a time — that's what
+  // lets the rules check your friendship with every single one.
+  async function createGroup(name, uids) {
+    try {
+      const ref = doc(collection(db, "chats"));
+      const emails = {}, admins = {};
+      emails[CHAT.uid] = CHAT.email;
+      admins[CHAT.uid] = CHAT.admin;
+      await setDoc(ref, {
+        type: "group", name, members: [CHAT.uid], emails, admins,
+        lastText: "", lastFrom: "", lastAt: serverTimestamp(),
+      });
+      for (const uid of uids) await addMember(ref.id, uid);
+      const snap = await getDoc(ref);
+      openChat(Object.assign({ id: ref.id }, snap.data()));
+    } catch (err) {
+      toast("Couldn't create that group.");
+    }
+  }
+
+  async function addMember(chatId, uid) {
+    const snap = await getDoc(doc(db, "chats", chatId));
+    if (!snap.exists()) return;
+    const d = snap.data();
+    if ((d.members || []).includes(uid)) return;
+    const info = friendsList().find((f) => f.uid === uid) || CHAT.people.find((p) => p.uid === uid) || {};
+    const emails = Object.assign({}, d.emails || {});
+    const admins = Object.assign({}, d.admins || {});
+    emails[uid] = info.email || "";
+    admins[uid] = !!info.isAdmin;
+    await updateDoc(doc(db, "chats", chatId), {
+      members: (d.members || []).concat([uid]), emails, admins, lastAdded: uid,
+    });
+  }
+
+  $("chatNewGroup").addEventListener("click", () => {
+    const field = sheetField("Group name (optional)", "", false, 60);
+    const picker = pickerList(friendsList(),
+      "You can only start a group with people you're friends with. Add a friend first.");
+    const box = document.createElement("div");
+    box.append(field, sheetNote("Pick who to add. They don't have to be friends with each other."), picker);
+    openSheet({
+      title: "New group", okLabel: "Create", focus: field.input, body: box,
+      onOk: async () => {
+        const picked = picker.selected();
+        if (!picked.length) return toast("Pick at least one person.");
+        const name = field.input.value.trim().slice(0, 60);
+        closeSheet();
+        await createGroup(name, picked);
+      },
+    });
+  });
+
+  function confirmLeave(chat) {
+    openSheet({
+      title: "Leave chat", okLabel: "Leave", cancelLabel: "Stay", danger: true,
+      body: sheetNote("You'll stop getting messages here and the chat leaves your list. Everyone else stays, and a friend in the group can add you back."),
+      onOk: async () => {
+        closeSheet();
+        try {
+          const snap = await getDoc(doc(db, "chats", chat.id));
+          const members = ((snap.data() || {}).members || []).filter((m) => m !== CHAT.uid);
+          await updateDoc(doc(db, "chats", chat.id), { members });
+          showChatList();
+        } catch (err) {
+          toast("Couldn't leave just now.");
+        }
+      },
+    });
+  }
+
+  $("chatPeople").addEventListener("click", () => {
+    const chat = CHAT.openChat;
+    if (!chat || !isGroup(chat) || CHAT.readOnly) return;
+    const box = document.createElement("div");
+
+    (chat.members || []).forEach((uid) => {
+      const row = document.createElement("div");
+      row.className = "chat-member";
+      const who = document.createElement("span");
+      who.textContent = uid === CHAT.uid ? "You" : personName(chat, uid);
+      row.appendChild(who);
+      if (chat.admins && chat.admins[uid]) {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = "Admin";
+        row.appendChild(tag);
+      }
+      box.appendChild(row);
+    });
+
+    const picker = pickerList(
+      friendsList().filter((f) => !(chat.members || []).includes(f.uid)),
+      "Everyone you're friends with is already in this group.");
+    box.append(sheetNote("Nobody can be removed from a group — people leave on their own."), picker);
+
+    const leave = document.createElement("button");
+    leave.type = "button";
+    leave.className = "chat-mini no";
+    leave.textContent = "Leave this chat";
+    leave.style.margin = ".9rem";
+    leave.addEventListener("click", () => confirmLeave(chat));
+    box.appendChild(leave);
+
+    openSheet({
+      title: "People", okLabel: "Add", body: box,
+      onOk: async () => {
+        const picked = picker.selected();
+        if (!picked.length) return toast("Pick someone to add.");
+        closeSheet();
+        try {
+          for (const uid of picked) await addMember(chat.id, uid);
+        } catch (err) {
+          toast("Couldn't add everyone — you can only add your own friends.");
+        }
+      },
+    });
   });
 
   /* ------------------------------ search ------------------------------ */
