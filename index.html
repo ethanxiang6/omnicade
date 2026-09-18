@@ -930,7 +930,6 @@ body:has(.adm[open]) { overflow: hidden; }
 }
 .chat-pick { cursor: pointer; }
 .chat-pick:hover { background: var(--ink-3); }
-.chat-pick input { accent-color: var(--phosphor); flex: none; }
 .chat-member .tag {
   margin-left: auto; flex: none; font-size: .6rem; letter-spacing: .12em;
   text-transform: uppercase; color: var(--slate);
@@ -1072,6 +1071,49 @@ body:has(.adm[open]) { overflow: hidden; }
 @media (max-width: 480px) {
   #chatPanel { width: calc(100vw - 1.6rem); height: min(70vh, calc(100vh - 7rem)); }
 }
+
+/* ============================================================
+   SCROLLBARS, CHECKBOXES, TICKS — themed, not the OS defaults
+   ============================================================ */
+* { scrollbar-width: thin; scrollbar-color: var(--phosphor-d) transparent; }
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: rgba(38, 48, 63, .25); }
+::-webkit-scrollbar-thumb {
+  /* Transparent border + padding-box clip insets the thumb off the track edge. */
+  background: var(--phosphor-d); background-clip: padding-box;
+  border: 3px solid transparent; border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active { background: var(--phosphor); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Slimmer inside the tighter panels. */
+#chatPanel ::-webkit-scrollbar, #rack::-webkit-scrollbar, .adm ::-webkit-scrollbar { width: 8px; height: 8px; }
+#chatPanel ::-webkit-scrollbar-thumb, #rack::-webkit-scrollbar-thumb, .adm ::-webkit-scrollbar-thumb { border-width: 2px; }
+
+/* A drawn tick rather than the font's ✓, so it matches at any size. */
+.tick { position: relative; display: inline-block; width: .62em; height: 1em; flex: none; }
+.tick::after {
+  content: ""; position: absolute; left: 0; top: .1em;
+  width: .3em; height: .6em; transform: rotate(42deg);
+  border: solid currentColor; border-width: 0 2px 2px 0;
+}
+
+.chat-pick input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; position: relative; flex: none;
+  width: 18px; height: 18px; margin: 0; cursor: pointer;
+  background: var(--ink); border: 1px solid var(--line); border-radius: 3px;
+  transition: background .15s, border-color .15s;
+}
+.chat-pick:hover input[type="checkbox"] { border-color: var(--phosphor-d); }
+.chat-pick input[type="checkbox"]:checked { background: var(--phosphor); border-color: var(--phosphor); }
+.chat-pick input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 6px; top: 2px;
+  width: 4px; height: 9px; transform: rotate(42deg);
+  border: solid #1A1204; border-width: 0 2px 2px 0;
+}
+.chat-pick input[type="checkbox"]:focus-visible { outline: 2px solid var(--phosphor); outline-offset: 2px; }
 
 /* ============================================================
    REDUCED MOTION — everything at rest, nothing moving
@@ -1811,7 +1853,7 @@ body:has(.adm[open]) { overflow: hidden; }
       </span>
       <span class="cab-body">
         <span class="cab-name">${g.name}</span>
-        <span class="cab-meta"><span class="ok">✓</span> header-checked · archive.org</span>
+        <span class="cab-meta"><span class="ok tick" aria-hidden="true"></span> header-checked · archive.org</span>
       </span>
     </button>`).join("");
 
@@ -2202,7 +2244,7 @@ body:has(.adm[open]) { overflow: hidden; }
 
   // Version gate. version.json in the GitHub repo is the authority; bump both it
   // and APP_VERSION in the same push, or every copy will be told it's out of date.
-  const APP_VERSION = "2026.09.18.6";
+  const APP_VERSION = "2026.09.18.7";
   const REPO_URL = "https://github.com/ethanxiang6/websiteembed";
   const VERSION_URL = "https://raw.githubusercontent.com/ethanxiang6/websiteembed/main/version.json";
   let outdated = false;
@@ -2690,7 +2732,7 @@ body:has(.adm[open]) { overflow: hidden; }
   };
   // What each button writes. Denied always means not approved, and vice versa.
   const ACTIONS = {
-    approve: { label: "✓ Approve", cls: "btn btn-primary adm-act", data: { isApproved: true,  isDenied: false } },
+    approve: { label: "Approve", tick: true, cls: "btn btn-primary adm-act", data: { isApproved: true,  isDenied: false } },
     revoke:  { label: "Revoke",    cls: "btn adm-act quiet",       data: { isApproved: false, isDenied: false } },
     deny:    { label: "Deny",      cls: "btn adm-act deny",        data: { isApproved: false, isDenied: true  } },
     unblock: { label: "Unblock",   cls: "btn adm-act quiet",       data: { isApproved: false, isDenied: false } },
@@ -2784,7 +2826,16 @@ body:has(.adm[open]) { overflow: hidden; }
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = action.cls;
-          btn.textContent = busy.get(u.uid) === key ? "Saving…" : action.label;
+          if (busy.get(u.uid) === key) {
+            btn.textContent = "Saving…";
+          } else if (action.tick) {
+            const t = document.createElement("span");
+            t.className = "tick";
+            t.setAttribute("aria-hidden", "true");
+            btn.append(t, document.createTextNode(action.label));
+          } else {
+            btn.textContent = action.label;
+          }
           btn.disabled = busy.has(u.uid);
           btn.addEventListener("click", () => changeAccess(u, key));
           acts.appendChild(btn);
