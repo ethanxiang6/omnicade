@@ -516,6 +516,21 @@ footer .fl { display: flex; justify-content: space-between; gap: 1.5rem; flex-wr
 }
 #rackSearch:focus { border-color: var(--phosphor-d); }
 #rackSearch::placeholder { color: var(--slate); opacity: .7; }
+
+/* The placeholder runs about two characters past the field and the browser cut
+   it dead mid-letter. A strip of the field's own colour over the right inner
+   edge lets it run out instead. It sits inside the border, so the border and
+   the focus ring are untouched, and it shows only while the placeholder does —
+   which is exactly when Chrome's clear button isn't there to be dimmed by it. */
+.rack-search { position: relative; }
+.rack-search::after {
+  content: ""; position: absolute; pointer-events: none; opacity: 0;
+  top: calc(.75rem + 1px); bottom: calc(.65rem + 1px); right: calc(.75rem + 1px);
+  width: 1.25rem; border-radius: 0 1px 1px 0;
+  background: linear-gradient(to right, transparent, var(--ink) 85%);
+  transition: opacity .2s var(--ease);
+}
+.rack-search:has(#rackSearch:placeholder-shown)::after { opacity: 1; }
 .rack-empty {
   margin: 0; padding: 1.4rem 1rem;
   font-family: var(--f-mono); font-size: .72rem; color: var(--slate);
