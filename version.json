@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.18.12",
-  "url": "https://github.com/ethanxiang6/websiteembed",
+  "version": "2026.09.18.13",
+  "url": "https://github.com/ethanxiang6/omnicade",
   "note": "Must match APP_VERSION in index.html. Bump both in the same push. Numbers only, newest wins."
 }
